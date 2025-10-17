@@ -1,10 +1,18 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
+<<<<<<< HEAD
 project(thort_jivit LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "thort_jivit")
+=======
+project(life_record LANGUAGES CXX)
+
+# The name of the executable created for the application. Change this to change
+# the on-disk name of your application.
+set(BINARY_NAME "life_record")
+>>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

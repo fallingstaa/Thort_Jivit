@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
+<<<<<<< HEAD
         android:label="thort_jivit"
+=======
+        android:label="life_record"
+>>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 # thort_jivit
+=======
+# life_record
+>>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
 
 A new Flutter project.
 

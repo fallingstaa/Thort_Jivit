@@ -15,7 +15,11 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "33CC10EC2044A3C60003C045"
+<<<<<<< HEAD
                BuildableName = "thort_jivit.app"
+=======
+               BuildableName = "life_record.app"
+>>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
                BlueprintName = "Runner"
                ReferencedContainer = "container:Runner.xcodeproj">
             </BuildableReference>
@@ -31,7 +35,11 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "33CC10EC2044A3C60003C045"
+<<<<<<< HEAD
             BuildableName = "thort_jivit.app"
+=======
+            BuildableName = "life_record.app"
+>>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
             BlueprintName = "Runner"
             ReferencedContainer = "container:Runner.xcodeproj">
          </BuildableReference>
@@ -66,7 +74,11 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "33CC10EC2044A3C60003C045"
+<<<<<<< HEAD
             BuildableName = "thort_jivit.app"
+=======
+            BuildableName = "life_record.app"
+>>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
             BlueprintName = "Runner"
             ReferencedContainer = "container:Runner.xcodeproj">
          </BuildableReference>
@@ -83,7 +95,11 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "33CC10EC2044A3C60003C045"
+<<<<<<< HEAD
             BuildableName = "thort_jivit.app"
+=======
+            BuildableName = "life_record.app"
+>>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
             BlueprintName = "Runner"
             ReferencedContainer = "container:Runner.xcodeproj">
          </BuildableReference>

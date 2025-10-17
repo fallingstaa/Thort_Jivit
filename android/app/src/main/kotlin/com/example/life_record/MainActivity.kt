@@ -1,4 +1,4 @@
-package com.example.thort_jivit
+package com.example.life_record
 
 import io.flutter.embedding.android.FlutterActivity
 

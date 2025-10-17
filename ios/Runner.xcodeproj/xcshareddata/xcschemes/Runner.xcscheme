@@ -26,6 +26,10 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+<<<<<<< HEAD
+=======
+      customLLDBInitFile = "$(SRCROOT)/Flutter/ephemeral/flutter_lldbinit"
+>>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
       shouldUseLaunchSchemeArgsEnv = "YES">
       <MacroExpansion>
          <BuildableReference
@@ -54,6 +58,10 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+<<<<<<< HEAD
+=======
+      customLLDBInitFile = "$(SRCROOT)/Flutter/ephemeral/flutter_lldbinit"
+>>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
       launchStyle = "0"
       useCustomWorkingDirectory = "NO"
       ignoresPersistentStateOnLaunch = "NO"

@@ -90,12 +90,21 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
+<<<<<<< HEAD
             VALUE "FileDescription", "thort_jivit" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "thort_jivit" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
             VALUE "OriginalFilename", "thort_jivit.exe" "\0"
             VALUE "ProductName", "thort_jivit" "\0"
+=======
+            VALUE "FileDescription", "life_record" "\0"
+            VALUE "FileVersion", VERSION_AS_STRING "\0"
+            VALUE "InternalName", "life_record" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
+            VALUE "OriginalFilename", "life_record.exe" "\0"
+            VALUE "ProductName", "life_record" "\0"
+>>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
