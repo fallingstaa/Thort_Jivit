@@ -1,15 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:thort_jivit/screen/home_screen.dart';
+import 'package:thort_jivit/screen/SignInScreen.dart';
 
-// --- Custom Background Painter Class (Corrected) ---
 class WelcomeBackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // Define the primary green color from the theme.
-    // NOTE: This painter doesn't have access to 'context', so we have to define a color.
-    // Let's use a sample green. Replace with your actual brand color if needed.
-
-    // --- FIX: Added Paint and drawPath for the top curve ---
+    
 
     final path1 = Path();
     path1.moveTo(size.width, 0);
@@ -25,7 +20,6 @@ class WelcomeBackgroundPainter extends CustomPainter {
     path1.lineTo(size.width, size.height * 0.3);
     path1.close();
 
-    // Bottom illustration base (off-white/pale color)
     final Paint paint2 =
         Paint()
           ..color = const Color(0xFFF0F4F6)
@@ -63,7 +57,7 @@ class WelcomeScreen extends StatelessWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withAlpha((255 * 0.15).round()),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -85,8 +79,8 @@ class WelcomeScreen extends StatelessWidget {
         children: [
           Center(
             child: Container(
-              width: 600, // Or any width you want
-              height: 750, // Or any height you want
+              width: 600, 
+              height: 750, 
               decoration: const BoxDecoration(
                 image: DecorationImage(
                   image: AssetImage("assets/images/image.png"),
@@ -97,7 +91,6 @@ class WelcomeScreen extends StatelessWidget {
               ),
             ),
           ),
-          // CustomPaint(size: screenSize, painter: WelcomeBackgroundPainter()),
 
           SingleChildScrollView(
             child: Container(
@@ -124,7 +117,6 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
 
-                  // Main tagline
                   const Text(
                     'Capture your life, one moment at',
                     textAlign: TextAlign.center,
@@ -159,7 +151,7 @@ class WelcomeScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const HomeScreen(),
+                            builder: (context) => const SignInScreen(),
                           ),
                         );
                       },
@@ -181,12 +173,10 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
 
-                  // Create Account Button
                   SizedBox(
                     height: 56,
                     child: OutlinedButton(
                       onPressed: () {
-                        // TODO: Navigate to Create Account screen
                       },
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: primaryBrandGreen, width: 2),
@@ -206,7 +196,6 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 48),
 
-                  // Terms and Policy text
                   const Padding(
                     padding: EdgeInsets.only(bottom: 24),
                     child: Text(

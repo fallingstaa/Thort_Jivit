@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:thort_jivit/screen/welcome.dart'; // Ensure correct path
 
-// Define a consistent brand color based on the design
-const Color primaryBrandGreen = Color(0xFF2E8B57); // Forest Green
+import 'package:thort_jivit/theme.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
