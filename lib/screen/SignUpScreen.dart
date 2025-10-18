@@ -1,16 +1,15 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'SignInScreen.dart';
-import 'SignUpScreen.dart';
 
-class SignInScreen extends StatefulWidget {
-  const SignInScreen({super.key});
+class SignUpScreen extends StatefulWidget {
+  const SignUpScreen({super.key});
 
   @override
-  State<SignInScreen> createState() => _SignInScreenState();
+  State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _SignInScreenState extends State<SignInScreen> {
+class _SignUpScreenState extends State<SignUpScreen> {
+  // State variable to toggle password visibility
   bool _isPasswordVisible = false;
 
   @override
@@ -26,9 +25,10 @@ class _SignInScreenState extends State<SignInScreen> {
               const SizedBox(height: 20),
               _buildHeader(),
               const SizedBox(height: 32),
-              _buildSignInForm(),
+              _buildSignUpForm(),
               const SizedBox(height: 24),
               _buildFooter(),
+              
             ],
           ),
         ),
@@ -36,6 +36,7 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
+  /// Builds the top back button.
   Widget _buildAppBar() {
     return InkWell(
       onTap: () {
@@ -46,9 +47,6 @@ class _SignInScreenState extends State<SignInScreen> {
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-        ),
         child: const Icon(Icons.arrow_back, color: Color(0xFF007A55)),
       ),
     );
@@ -80,16 +78,16 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
           const SizedBox(height: 24),
           const Text(
-            'Welcome Back',
+            'Create Your Account',
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF006045),
+              color: Colors.black87,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Sign in to continue your life story',
+            'Start recording your life journey today',
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey.shade600,
@@ -100,7 +98,8 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  Widget _buildSignInForm() {
+  // Sign-up form 
+  Widget _buildSignUpForm() {
     return Container(
       padding: const EdgeInsets.all(24.0),
       decoration: BoxDecoration(
@@ -108,7 +107,7 @@ class _SignInScreenState extends State<SignInScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withAlpha((255 * 0.15).round()),
+            color: Colors.grey.withOpacity(0.15),
             spreadRadius: 5,
             blurRadius: 15,
             offset: const Offset(0, 5),
@@ -118,43 +117,60 @@ class _SignInScreenState extends State<SignInScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Email', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54)),
+          // Full Name Field
+          _buildFormLabel('Full Name'),
+          const SizedBox(height: 8),
+          _buildTextField(hint: 'Meng heng', icon: Icons.person_outline),
+
+          const SizedBox(height: 20),
+
+          // Email Field
+          _buildFormLabel('Email'),
           const SizedBox(height: 8),
           _buildTextField(hint: 'your@email.com', icon: Icons.email_outlined),
 
           const SizedBox(height: 20),
 
-          _buildPasswordHeader(),
+          // Password Field
+          _buildFormLabel('Password'),
           const SizedBox(height: 8),
           _buildPasswordField(),
+          const SizedBox(height: 12),
+          _buildPasswordRequirement(),
 
           const SizedBox(height: 24),
 
-          _buildSignInButton(),
+          // Create Account Button
+          _buildCreateAccountButton(),
 
           const SizedBox(height: 24),
           _buildDivider(),
           const SizedBox(height: 24),
 
+          // Social Logins
           _buildSocialLoginButtons(),
-        ],
-      ),
-    );
-  }
 
+          const SizedBox(height: 24),
 
-  Widget _buildFooter() {
-    return Center(
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: () {
-            },
-            child: const Text(
-              'Back to welcome screen',
-              style: TextStyle(
-                color: Color(0xFF008060),
-                fontWeight: FontWeight.w600,
+          Center(
+            child: RichText(
+              text: TextSpan(
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                children: [
+                  const TextSpan(text: "Already have an account? "),
+                  TextSpan(
+                    text: 'Sign in',
+                    style: const TextStyle(
+                      color: Color(0xFF008060),
+                      fontWeight: FontWeight.bold,
+                    ),
+                    recognizer: TapGestureRecognizer()
+                      ..onTap = () {
+                        // Go back to the previous screen (Sign In Screen)
+                        Navigator.of(context).pop();
+                      },
+                  ),
+                ],
               ),
             ),
           ),
@@ -163,30 +179,16 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
+  
 
-  Widget _buildPasswordHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text('Password', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54)),
-        GestureDetector(
-          onTap: () {
-          },
-          child: const Text(
-            'Forgot Password?',
-            style: TextStyle(
-              color: Color(0xFF008060),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
+  // --- Helper methods for _buildSignUpForm ---
+
+  Widget _buildFormLabel(String label) {
+    return Text(label, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black54));
   }
 
-  Widget _buildTextField({required String hint, required IconData icon, bool isPassword = false}) {
+  Widget _buildTextField({required String hint, required IconData icon}) {
     return TextField(
-      obscureText: isPassword,
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon),
@@ -230,21 +232,31 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  Widget _buildSignInButton() {
+  Widget _buildPasswordRequirement() {
+    return Row(
+      children: [
+        Icon(Icons.radio_button_unchecked, color: Colors.grey.shade500, size: 20),
+        const SizedBox(width: 8),
+        Text('Must be at least 8 characters', style: TextStyle(color: Colors.grey.shade600)),
+      ],
+    );
+  }
+
+  Widget _buildCreateAccountButton() {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: () {},
-        icon: const Icon(Icons.email_outlined, color: Colors.white),
+        icon: const Icon(Icons.person_outline, color: Colors.white),
         label: const Text(
-          'Sign in with Email',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white ),
+          'Create Account',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF008060),
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(500),
+            borderRadius: BorderRadius.circular(50),
           ),
         ),
       ),
@@ -257,7 +269,7 @@ class _SignInScreenState extends State<SignInScreen> {
         Expanded(child: Divider(color: Colors.grey.shade300)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Text('or continue with', style: TextStyle(color: Colors.grey.shade600)),
+          child: Text('or sign up with', style: TextStyle(color: Colors.grey.shade600)),
         ),
         Expanded(child: Divider(color: Colors.grey.shade300)),
       ],
@@ -269,43 +281,14 @@ class _SignInScreenState extends State<SignInScreen> {
       children: [
         _buildSocialButton(
           label: 'Continue with Google',
-          iconAsset: 'assets/images/icons8-google-48.png', 
+          iconAsset: 'assets/images/icons8-google-48.png',
           onPressed: () {},
         ),
         const SizedBox(height: 12),
         _buildSocialButton(
-          label: 'Continue with Facebook',
-          iconAsset: 'assets/images/icons8-facebook-logo-48.png', 
+          label: 'Sign up with Facebook',
+          iconAsset: 'assets/images/icons8-facebook-logo-48.png',
           onPressed: () {},
-        ),
-        const SizedBox(height: 12),
-        _buildSocialButton(
-          isIconData: true,
-          iconData: Icons.person_outline,
-          label: 'Continue as Guest',
-          onPressed: () {},
-        ),
-        const SizedBox(height: 24),
-        RichText(
-          text: TextSpan(
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-            children: [
-              const TextSpan(text: "Don't have an account? "),
-              TextSpan(
-                text: 'Sign up',
-                style: const TextStyle(
-                  color: Color(0xFF008060),
-                  fontWeight: FontWeight.bold,
-                ),
-                recognizer: TapGestureRecognizer()
-                  ..onTap = () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const SignUpScreen()),
-                    );
-                  },
-              ),
-            ],
-          ),
         ),
       ],
     );
@@ -313,18 +296,14 @@ class _SignInScreenState extends State<SignInScreen> {
 
   Widget _buildSocialButton({
     required String label,
-    String? iconAsset,
-    IconData? iconData,
-    bool isIconData = false,
+    required String iconAsset,
     required VoidCallback onPressed,
   }) {
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: onPressed,
-        icon: isIconData
-            ? Icon(iconData, color: Colors.black54)
-            : Image.asset(iconAsset!, height: 20),
+        icon: Image.asset(iconAsset, height: 20),
         label: Text(
           label,
           style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
@@ -339,5 +318,23 @@ class _SignInScreenState extends State<SignInScreen> {
       ),
     );
   }
+  Widget _buildFooter() {
+    return Center(
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: () {
+            },
+            child: const Text(
+              'Back to welcome screen',
+              style: TextStyle(
+                color: Color(0xFF008060),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
-
