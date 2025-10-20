@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:thort_jivit/screen/homepage.dart';
 import 'package:thort_jivit/screen/welcome.dart'; // Ensure correct path
 
 // Define a consistent brand color based on the design
