@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:thort_jivit/screen/SignInScreen.dart';
+import 'package:thort_jivit/screen/SignUpScreen.dart';
 
 class WelcomeBackgroundPainter extends CustomPainter {
   @override
@@ -177,6 +178,12 @@ class WelcomeScreen extends StatelessWidget {
                     height: 56,
                     child: OutlinedButton(
                       onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SignUpScreen(),
+                          ),
+                        );
                       },
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: primaryBrandGreen, width: 2),
