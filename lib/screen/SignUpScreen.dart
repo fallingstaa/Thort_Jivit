@@ -15,20 +15,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF7F9F9), // A light background color
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          // We use a Column and carefully manage spacing to avoid scrolling.
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildAppBar(),
-              const SizedBox(height: 20),
-              _buildHeader(),
-              const SizedBox(height: 32),
-              _buildSignUpForm(),
-              const SizedBox(height: 24),
+              // Expanded widget takes up the available space in the column.
+              Expanded(
+                // A ListView is used here to prevent pixel overflow on very small screens.
+                // It will only scroll if the content absolutely cannot fit.
+                child: ListView(
+                  children: [
+                    _buildHeader(),
+                    const SizedBox(height: 24),
+                    _buildSignUpForm(),
+                  ],
+                ),
+              ),
               _buildFooter(),
-              
             ],
           ),
         ),
@@ -52,14 +60,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  /// Builds the header with the logo and title text.
   Widget _buildHeader() {
     return Center(
       child: Column(
         children: [
           // Logo
           Container(
-            width: 120,
-            height: 120,
+            width: 100, // Reduced logo size
+            height: 100, // Reduced logo size
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -73,35 +82,33 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ],
             ),
             child: ClipOval(
+              // Make sure you have this image asset in your project
               child: Image.asset('assets/images/THOT.png', fit: BoxFit.contain),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16), // Reduced space
           const Text(
             'Create Your Account',
             style: TextStyle(
-              fontSize: 28,
+              fontSize: 26, // Slightly smaller font
               fontWeight: FontWeight.bold,
               color: Colors.black87,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4), // Reduced space
           Text(
             'Start recording your life journey today',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey.shade600,
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
           ),
         ],
       ),
     );
   }
 
-  // Sign-up form 
+  /// Builds the main sign-up form container.
   Widget _buildSignUpForm() {
     return Container(
-      padding: const EdgeInsets.all(24.0),
+      padding: const EdgeInsets.all(20.0), // Reduced padding
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -117,74 +124,42 @@ class _SignUpScreenState extends State<SignUpScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Full Name Field
           _buildFormLabel('Full Name'),
           const SizedBox(height: 8),
           _buildTextField(hint: 'Meng heng', icon: Icons.person_outline),
-
-          const SizedBox(height: 20),
-
-          // Email Field
+          const SizedBox(height: 16), // Reduced space
           _buildFormLabel('Email'),
           const SizedBox(height: 8),
           _buildTextField(hint: 'your@email.com', icon: Icons.email_outlined),
-
-          const SizedBox(height: 20),
-
-          // Password Field
+          const SizedBox(height: 16), // Reduced space
           _buildFormLabel('Password'),
           const SizedBox(height: 8),
           _buildPasswordField(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8), // Reduced space
           _buildPasswordRequirement(),
-
-          const SizedBox(height: 24),
-
-          // Create Account Button
+          const SizedBox(height: 20), // Reduced space
           _buildCreateAccountButton(),
-
-          const SizedBox(height: 24),
+          const SizedBox(height: 16), // Reduced space
           _buildDivider(),
-          const SizedBox(height: 24),
-
-          // Social Logins
+          const SizedBox(height: 16), // Reduced space
           _buildSocialLoginButtons(),
-
-          const SizedBox(height: 24),
-
-          Center(
-            child: RichText(
-              text: TextSpan(
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                children: [
-                  const TextSpan(text: "Already have an account? "),
-                  TextSpan(
-                    text: 'Sign in',
-                    style: const TextStyle(
-                      color: Color(0xFF008060),
-                      fontWeight: FontWeight.bold,
-                    ),
-                    recognizer: TapGestureRecognizer()
-                      ..onTap = () {
-                        // Go back to the previous screen (Sign In Screen)
-                        Navigator.of(context).pop();
-                      },
-                  ),
-                ],
-              ),
-            ),
-          ),
+          const SizedBox(height: 16), // Reduced space
+          _buildSignInLink(),
         ],
       ),
     );
   }
 
-  
-
-  // --- Helper methods for _buildSignUpForm ---
+  // --- Helper methods for building the form ---
 
   Widget _buildFormLabel(String label) {
-    return Text(label, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black54));
+    return Text(
+      label,
+      style: const TextStyle(
+        fontWeight: FontWeight.w600,
+        color: Colors.black54,
+      ),
+    );
   }
 
   Widget _buildTextField({required String hint, required IconData icon}) {
@@ -212,7 +187,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
           icon: Icon(
-            _isPasswordVisible ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+            _isPasswordVisible
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
           ),
           onPressed: () {
             setState(() {
@@ -235,9 +212,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildPasswordRequirement() {
     return Row(
       children: [
-        Icon(Icons.radio_button_unchecked, color: Colors.grey.shade500, size: 20),
+        Icon(
+          Icons.radio_button_unchecked,
+          color: Colors.grey.shade500,
+          size: 20,
+        ),
         const SizedBox(width: 8),
-        Text('Must be at least 8 characters', style: TextStyle(color: Colors.grey.shade600)),
+        Text(
+          'Must be at least 8 characters',
+          style: TextStyle(color: Colors.grey.shade600),
+        ),
       ],
     );
   }
@@ -250,7 +234,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
         icon: const Icon(Icons.person_outline, color: Colors.white),
         label: const Text(
           'Create Account',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF008060),
@@ -269,7 +257,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
         Expanded(child: Divider(color: Colors.grey.shade300)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Text('or sign up with', style: TextStyle(color: Colors.grey.shade600)),
+          child: Text(
+            'or sign up with',
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
         ),
         Expanded(child: Divider(color: Colors.grey.shade300)),
       ],
@@ -306,10 +297,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
         icon: Image.asset(iconAsset, height: 20),
         label: Text(
           label,
-          style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
+          padding: const EdgeInsets.symmetric(vertical: 12), // Reduced padding
           side: BorderSide(color: Colors.grey.shade300),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -318,22 +312,50 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ),
     );
   }
+
+  Widget _buildSignInLink() {
+    return Center(
+      child: RichText(
+        text: TextSpan(
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+          children: [
+            const TextSpan(text: "Already have an account? "),
+            TextSpan(
+              text: 'Sign in',
+              style: const TextStyle(
+                color: Color(0xFF008060),
+                fontWeight: FontWeight.bold,
+              ),
+              recognizer:
+                  TapGestureRecognizer()
+                    ..onTap = () {
+                      // Go back to the previous screen (Sign In Screen)
+                      Navigator.of(context).pop();
+                    },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Builds the footer text at the bottom of the screen.
   Widget _buildFooter() {
     return Center(
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: () {
-            },
-            child: const Text(
-              'Back to welcome screen',
-              style: TextStyle(
-                color: Color(0xFF008060),
-                fontWeight: FontWeight.w600,
-              ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: GestureDetector(
+          onTap: () {
+            // Add navigation logic to welcome screen if needed
+          },
+          child: const Text(
+            'Back to welcome screen',
+            style: TextStyle(
+              color: Color(0xFF008060),
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ],
+        ),
       ),
     );
   }
