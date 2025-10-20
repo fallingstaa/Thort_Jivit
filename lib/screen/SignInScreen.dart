@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'SignUpScreen.dart';
+import 'HomeScreen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -94,10 +95,7 @@ class _SignInScreenState extends State<SignInScreen> {
           const SizedBox(height: 4),
           Text(
             'Sign in to continue your life story',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey.shade600,
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
           ),
         ],
       ),
@@ -123,7 +121,13 @@ class _SignInScreenState extends State<SignInScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Email', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54)),
+          const Text(
+            'Email',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.black54,
+            ),
+          ),
           const SizedBox(height: 8),
           _buildTextField(hint: 'your@email.com', icon: Icons.email_outlined),
           const SizedBox(height: 16),
@@ -147,7 +151,10 @@ class _SignInScreenState extends State<SignInScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text('Password', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54)),
+        const Text(
+          'Password',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54),
+        ),
         GestureDetector(
           onTap: () {
             // Handle forgot password
@@ -189,7 +196,9 @@ class _SignInScreenState extends State<SignInScreen> {
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
           icon: Icon(
-            _isPasswordVisible ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+            _isPasswordVisible
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
           ),
           onPressed: () {
             setState(() {
@@ -213,11 +222,19 @@ class _SignInScreenState extends State<SignInScreen> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () {},
+        onPressed: () {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+          );
+        },
         icon: const Icon(Icons.email_outlined, color: Colors.white),
         label: const Text(
           'Sign in with Email',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF008060),
@@ -236,7 +253,10 @@ class _SignInScreenState extends State<SignInScreen> {
         Expanded(child: Divider(color: Colors.grey.shade300)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Text('or continue with', style: TextStyle(color: Colors.grey.shade600)),
+          child: Text(
+            'or continue with',
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
         ),
         Expanded(child: Divider(color: Colors.grey.shade300)),
       ],
@@ -276,12 +296,15 @@ class _SignInScreenState extends State<SignInScreen> {
                   color: Color(0xFF008060),
                   fontWeight: FontWeight.bold,
                 ),
-                recognizer: TapGestureRecognizer()
-                  ..onTap = () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const SignUpScreen()),
-                    );
-                  },
+                recognizer:
+                    TapGestureRecognizer()
+                      ..onTap = () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const SignUpScreen(),
+                          ),
+                        );
+                      },
               ),
             ],
           ),
@@ -301,12 +324,16 @@ class _SignInScreenState extends State<SignInScreen> {
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: onPressed,
-        icon: isIconData
-            ? Icon(iconData, color: Colors.black54)
-            : Image.asset(iconAsset!, height: 20),
+        icon:
+            isIconData
+                ? Icon(iconData, color: Colors.black54)
+                : Image.asset(iconAsset!, height: 20),
         label: Text(
           label,
-          style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -318,7 +345,7 @@ class _SignInScreenState extends State<SignInScreen> {
       ),
     );
   }
-  
+
   /// Builds the footer text at the bottom.
   Widget _buildFooter() {
     return Center(
