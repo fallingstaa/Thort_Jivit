@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'SignInScreen.dart';
 import 'SignUpScreen.dart';
+import 'homepage.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -234,7 +235,12 @@ class _SignInScreenState extends State<SignInScreen> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () {},
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const HomePage()),
+          );
+        },
         icon: const Icon(Icons.email_outlined, color: Colors.white),
         label: const Text(
           'Sign in with Email',

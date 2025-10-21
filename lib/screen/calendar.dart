@@ -8,19 +8,16 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  int _selectedIndex = 1; // Set to 1 for the Calendar tab
+  int _selectedIndex = 1; 
 
-  // --- Navigation ---
   void _onItemTapped(int index) {
     if (index == _selectedIndex) return;
 
-    // Use pushReplacementNamed to avoid building up a stack of pages
     switch (index) {
       case 0:
         Navigator.pushReplacementNamed(context, '/home');
         break;
       case 1:
-        // Already on Calendar, do nothing
         break;
       case 2:
         Navigator.pushReplacementNamed(context, '/videos');
@@ -38,18 +35,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: _buildAppBar(),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
           child: Column(
             children: [
               _buildMonthSelector(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               _buildCalendarGrid(),
-              const SizedBox(height: 24),
+              const SizedBox(height: 24), 
               _buildAddRecordingButton(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               _buildActionButtons(),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
               _buildMonthlySummaryCard(),
+              const SizedBox(height: 12), 
             ],
           ),
         ),
@@ -58,7 +56,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // --- UI Widget Builders ---
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
@@ -66,13 +63,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
       elevation: 1,
       centerTitle: true,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.black87),
+        icon: const Icon(Icons.arrow_back, color:  const Color(0xFF00A981)),
         onPressed: () {
-            // Navigate back to the previous screen, likely HomePage
             if (Navigator.canPop(context)) {
               Navigator.pop(context);
             } else {
-              // Fallback if there's no screen to pop to
               Navigator.pushReplacementNamed(context, '/home');
             }
         },
@@ -80,7 +75,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       title: const Text(
         'Calendar',
         style: TextStyle(
-          color: Colors.black87,
+          color:  const Color(0xFF00A981),
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -89,7 +84,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Widget _buildMonthSelector() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -119,22 +114,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildCalendarGrid() {
-    // Weekday headers
     final List<String> weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    // Days in October 2025 start on a Wednesday (index 3)
-    final int firstDayOffset = 3;
+    final int firstDayOffset = 3; 
     final int daysInMonth = 31;
-    // Mock data for recorded days, matching the image
-    final Map<int, List<IconData>> recordedDays = {
-      3: [Icons.videocam],
-      5: [Icons.videocam],
-      8: [Icons.videocam, Icons.notes],
-      12: [Icons.videocam],
-      15: [Icons.videocam, Icons.notes],
-      18: [Icons.videocam, Icons.notes],
-      22: [Icons.videocam],
-      25: [Icons.videocam],
-      27: [Icons.videocam, Icons.notes],
+    
+    final Map<int, String> recordedDays = {
+      3: '☕️',
+      5: '🌇',
+      8: '🛍️',
+      12: '🍕',
+      15: '🎵',
+      18: '🥦',
+      22: '🎬',
+      25: '✈️',
+      27: '🤯',
     };
 
     return Container(
@@ -155,18 +148,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
             shrinkWrap: true,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
-              childAspectRatio: 1.1, // Adjust aspect ratio for better spacing
+              childAspectRatio: 1.0,
             ),
             itemCount: daysInMonth + firstDayOffset,
             itemBuilder: (context, index) {
               if (index < firstDayOffset) {
-                return const SizedBox.shrink(); // Empty space before the 1st
+                return const SizedBox.shrink();
               }
               final int day = index - firstDayOffset + 1;
               return _buildCalendarDay(
                 day: day,
-                isRecorded: recordedDays.containsKey(day),
-                icons: recordedDays[day] ?? [],
+                emoji: recordedDays[day],
               );
             },
           ),
@@ -175,12 +167,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _buildCalendarDay({required int day, bool isRecorded = false, List<IconData> icons = const []}) {
+  Widget _buildCalendarDay({required int day, String? emoji}) {
+    final bool isRecorded = emoji != null;
     return Container(
       margin: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: isRecorded ? const Color(0xFF00A981) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12), 
       ),
       child: Stack(
         alignment: Alignment.center,
@@ -189,20 +182,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
             '$day',
             style: TextStyle(
               color: isRecorded ? Colors.white : Colors.black87,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          if (icons.isNotEmpty)
+          if (isRecorded)
             Positioned(
-              bottom: 2,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: icons
-                    .map((icon) => Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 1.0),
-                          child: Icon(icon, color: Colors.white.withOpacity(0.8), size: 8),
-                        ))
-                    .toList(),
+              top: 2,
+              right: 2,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  emoji,
+                  style: const TextStyle(fontSize: 10),
+                ),
               ),
             )
         ],
@@ -222,7 +218,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF00A981),
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -240,9 +236,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             icon: const Icon(Icons.video_library_outlined),
             label: const Text('All Videos'),
             style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              foregroundColor: Colors.black87,
-              side: BorderSide(color: Colors.grey.shade300),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              foregroundColor:  const Color(0xFF00A981),
+              side: BorderSide(color: const Color(0xFF00A981)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
@@ -254,9 +250,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             icon: const Icon(Icons.dashboard_outlined),
             label: const Text('Dashboard'),
             style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              foregroundColor: Colors.black87,
-              side: BorderSide(color: Colors.grey.shade300),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              foregroundColor: const Color(0xFF00A981),
+              side: BorderSide(color: const Color(0xFF00A981)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
@@ -267,7 +263,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Widget _buildMonthlySummaryCard() {
     return Container(
-      padding: const EdgeInsets.all(20.0),
+      padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -279,7 +275,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             'This Month',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -298,7 +294,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       children: [
         Text(
           value,
-          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF00A981)),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF00A981)),
         ),
         const SizedBox(height: 4),
         Text(
