@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'calendar.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -240,6 +241,14 @@ class HomePage extends StatelessWidget {
         selectedItemColor: const Color(0xFF5D9F6A),
         unselectedItemColor: Colors.black45,
         currentIndex: 0,
+        onTap: (index) {
+          if (index == 1) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const CalendarScreen()),
+            );
+          }
+        },
         selectedFontSize: 12,
         unselectedFontSize: 12,
         items: const [
