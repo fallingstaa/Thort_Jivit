@@ -8,20 +8,19 @@ class MusicScreen extends StatefulWidget {
   }
 
 
-// A simple data model for a song
 class Song {
   final String title;
   final String artist;
   final String album;
   final String imagePath;
-  bool isFavorite; // <-- 1. ADDED: To track favorite status
+  bool isFavorite; 
 
   Song({
     required this.title,
     required this.artist,
     required this.album,
     required this.imagePath,
-    this.isFavorite = false, // <-- Default to not favorite
+    this.isFavorite = false,
   });
 }
 
@@ -32,7 +31,7 @@ class _MusicScreenState extends State<MusicScreen> {
     'music/3.png',
   ];
 
-  // --- 2. ADDED: More mock data for variety ---
+  
   final List<String> _titles = [
     'Shattered',
     'Echoes in the Void',
@@ -54,7 +53,6 @@ class _MusicScreenState extends State<MusicScreen> {
     'Celestial',
     'Reflections'
   ];
-  // --- End of new data ---
 
   late final List<Song> _recentlyPlayed;
 
@@ -64,7 +62,6 @@ class _MusicScreenState extends State<MusicScreen> {
     _recentlyPlayed = List.generate(
       10,
       (index) {
-        // MODIFIED: Use modulo to cycle through new mock data
         final dataIndex = index % _titles.length;
         return Song(
           title: _titles[dataIndex],
@@ -97,7 +94,6 @@ class _MusicScreenState extends State<MusicScreen> {
     );
   }
 
-  // --- UI Widget Builders ---
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
@@ -114,9 +110,8 @@ class _MusicScreenState extends State<MusicScreen> {
   }
 
   Widget _buildSongList() {
-    // Add padding to the bottom to ensure the list doesn't hide behind the player
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 160), // Increased bottom padding for player
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 160), 
       itemCount: _recentlyPlayed.length,
       itemBuilder: (context, index) {
         if (index == 0) {
@@ -183,22 +178,17 @@ class _MusicScreenState extends State<MusicScreen> {
               ],
             ),
           ),
-          // --- 3. MODIFIED: Favorite Icon Button ---
           IconButton(
             icon: Icon(
-              // Change icon based on favorite status
               song.isFavorite ? Icons.favorite : Icons.favorite_border,
-              // Change color based on favorite status
               color: song.isFavorite ? Colors.red : Colors.black,
             ),
             onPressed: () {
-              // Use setState to rebuild the widget with the new state
               setState(() {
                 song.isFavorite = !song.isFavorite;
               });
             },
           ),
-          // --- End of modification ---
           IconButton(
             icon: const Icon(Icons.more_horiz, color: Colors.black),
             onPressed: () {},
@@ -256,7 +246,6 @@ class _MusicScreenState extends State<MusicScreen> {
                     ],
                   ),
                 ),
-                // --- 4. MODIFIED: Favorite Icon for Bottom Player ---
                 IconButton(
                   icon: Icon(
                     _currentlyPlaying.isFavorite
@@ -273,19 +262,16 @@ class _MusicScreenState extends State<MusicScreen> {
                     });
                   },
                 ),
-                // --- End of modification ---
               ],
             ),
             const SizedBox(height: 8),
-            // Linear Progress Bar
             LinearProgressIndicator(
-              value: 0.3, // Mock progress
+              value: 0.3, 
               backgroundColor: Colors.white.withOpacity(0.2),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
               minHeight: 2,
             ),
             const SizedBox(height: 4),
-            // Player Controls
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
