@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:thort_jivit/screen/homepage.dart';
+import 'package:thort_jivit/screen/profile.dart';
 import 'package:thort_jivit/screen/welcome.dart'; // Ensure correct path
 
 import 'package:thort_jivit/theme.dart';
@@ -51,7 +52,7 @@ class App extends StatelessWidget {
           ),
         ),
       ),
-      home: const WelcomeScreen(),
+      home: const HomePage(),
     );
   }
 }
