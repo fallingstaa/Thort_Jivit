@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:thort_jivit/screen/SignInScreen.dart';
+import 'SignInScreen.dart';
+import 'SignUpScreen.dart';
 
 class WelcomeBackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    
-
     final path1 = Path();
     path1.moveTo(size.width, 0);
     path1.lineTo(size.width, size.height * 0.4);
@@ -20,10 +19,9 @@ class WelcomeBackgroundPainter extends CustomPainter {
     path1.lineTo(size.width, size.height * 0.3);
     path1.close();
 
-    final Paint paint2 =
-        Paint()
-          ..color = const Color(0xFFF0F4F6)
-          ..style = PaintingStyle.fill;
+    final Paint paint2 = Paint()
+      ..color = const Color(0xFFF0F4F6)
+      ..style = PaintingStyle.fill;
 
     final path2 = Path();
     path2.moveTo(size.width, size.height);
@@ -72,26 +70,24 @@ class WelcomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Size screenSize = MediaQuery.of(context).size;
+    final Color primaryBrandGreen = const Color(0xFF008060);
 
-    final Color primaryBrandGreen = Theme.of(context).primaryColor;
     return Scaffold(
       body: Stack(
         children: [
           Center(
             child: Container(
-              width: 600, 
-              height: 750, 
+              width: 600,
+              height: 750,
               decoration: const BoxDecoration(
                 image: DecorationImage(
                   image: AssetImage("assets/images/image.png"),
                   fit: BoxFit.cover,
                   alignment: Alignment(0.0, 100.0),
                 ),
-                
               ),
             ),
           ),
-
           SingleChildScrollView(
             child: Container(
               height: screenSize.height,
@@ -101,10 +97,8 @@ class WelcomeScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Spacer(flex: 3),
-
                   Center(child: _buildLogo(context)),
                   const SizedBox(height: 32),
-
                   Text(
                     'THOTH JIVIT',
                     textAlign: TextAlign.center,
@@ -116,7 +110,6 @@ class WelcomeScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-
                   const Text(
                     'Capture your life, one moment at',
                     textAlign: TextAlign.center,
@@ -127,7 +120,6 @@ class WelcomeScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 24),
                     child: Text(
@@ -140,7 +132,6 @@ class WelcomeScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-
                   const Spacer(flex: 2),
 
                   // Sign In Button
@@ -173,10 +164,17 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
 
+                  // Create Account Button
                   SizedBox(
                     height: 56,
                     child: OutlinedButton(
                       onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SignUpScreen(),
+                          ),
+                        );
                       },
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: primaryBrandGreen, width: 2),

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "224308949131",
+    "project_id": "flutter-ai-playground-2fc42",
+    "storage_bucket": "flutter-ai-playground-2fc42.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:224308949131:android:3189845a128f69b319648e",
+        "android_client_info": {
+          "package_name": "com.example.thort_chivit_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAsuLoXdTt1GxCjSvp8mxF-JP0weJUUKWw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:224308949131:android:9c9f11f55f32996319648e",
+        "android_client_info": {
+          "package_name": "com.thortchivit.videojournal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAsuLoXdTt1GxCjSvp8mxF-JP0weJUUKWw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

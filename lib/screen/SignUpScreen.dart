@@ -1,5 +1,10 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'SignInScreen.dart';
+import 'HomeScreen.dart';
+
+// --- Added Firebase imports ---
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -9,25 +14,37 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
-  // State variable to toggle password visibility
+  // --- State variable to toggle password visibility ---
   bool _isPasswordVisible = false;
+
+  // --- Added controllers to capture name, email, and password ---
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  // --- Firebase Auth instance ---
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F9), // A light background color
+      backgroundColor: const Color(0xFFF7F9F9),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-          // We use a Column and carefully manage spacing to avoid scrolling.
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildAppBar(),
-              // Expanded widget takes up the available space in the column.
               Expanded(
-                // A ListView is used here to prevent pixel overflow on very small screens.
-                // It will only scroll if the content absolutely cannot fit.
                 child: ListView(
                   children: [
                     _buildHeader(),
@@ -44,7 +61,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  /// Builds the top back button.
+  // --- Top back button ---
   Widget _buildAppBar() {
     return InkWell(
       onTap: () {
@@ -60,15 +77,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  /// Builds the header with the logo and title text.
+  // --- Header ---
   Widget _buildHeader() {
     return Center(
       child: Column(
         children: [
-          // Logo
           Container(
-            width: 100, // Reduced logo size
-            height: 100, // Reduced logo size
+            width: 100,
+            height: 100,
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -82,20 +98,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ],
             ),
             child: ClipOval(
-              // Make sure you have this image asset in your project
               child: Image.asset('assets/images/THOT.png', fit: BoxFit.contain),
             ),
           ),
-          const SizedBox(height: 16), // Reduced space
+          const SizedBox(height: 16),
           const Text(
             'Create Your Account',
             style: TextStyle(
-              fontSize: 26, // Slightly smaller font
+              fontSize: 26,
               fontWeight: FontWeight.bold,
               color: Colors.black87,
             ),
           ),
-          const SizedBox(height: 4), // Reduced space
+          const SizedBox(height: 4),
           Text(
             'Start recording your life journey today',
             style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
@@ -105,10 +120,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  /// Builds the main sign-up form container.
+  // --- Sign-up form ---
   Widget _buildSignUpForm() {
     return Container(
-      padding: const EdgeInsets.all(20.0), // Reduced padding
+      padding: const EdgeInsets.all(20.0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -126,31 +141,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
         children: [
           _buildFormLabel('Full Name'),
           const SizedBox(height: 8),
-          _buildTextField(hint: 'Meng heng', icon: Icons.person_outline),
-          const SizedBox(height: 16), // Reduced space
+          _buildTextField(hint: 'Meng heng', icon: Icons.person_outline, controller: _nameController),
+          const SizedBox(height: 16),
           _buildFormLabel('Email'),
           const SizedBox(height: 8),
-          _buildTextField(hint: 'your@email.com', icon: Icons.email_outlined),
-          const SizedBox(height: 16), // Reduced space
+          _buildTextField(hint: 'your@email.com', icon: Icons.email_outlined, controller: _emailController),
+          const SizedBox(height: 16),
           _buildFormLabel('Password'),
           const SizedBox(height: 8),
           _buildPasswordField(),
-          const SizedBox(height: 8), // Reduced space
+          const SizedBox(height: 8),
           _buildPasswordRequirement(),
-          const SizedBox(height: 20), // Reduced space
+          const SizedBox(height: 20),
           _buildCreateAccountButton(),
-          const SizedBox(height: 16), // Reduced space
+          const SizedBox(height: 16),
           _buildDivider(),
-          const SizedBox(height: 16), // Reduced space
+          const SizedBox(height: 16),
           _buildSocialLoginButtons(),
-          const SizedBox(height: 16), // Reduced space
+          const SizedBox(height: 16),
           _buildSignInLink(),
         ],
       ),
     );
   }
-
-  // --- Helper methods for building the form ---
 
   Widget _buildFormLabel(String label) {
     return Text(
@@ -162,8 +175,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildTextField({required String hint, required IconData icon}) {
+  Widget _buildTextField({required String hint, required IconData icon, TextEditingController? controller}) {
     return TextField(
+      controller: controller,
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon),
@@ -181,15 +195,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Widget _buildPasswordField() {
     return TextField(
+      controller: _passwordController,
       obscureText: !_isPasswordVisible,
       decoration: InputDecoration(
         hintText: '********',
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
           icon: Icon(
-            _isPasswordVisible
-                ? Icons.visibility_outlined
-                : Icons.visibility_off_outlined,
+            _isPasswordVisible ? Icons.visibility_outlined : Icons.visibility_off_outlined,
           ),
           onPressed: () {
             setState(() {
@@ -230,7 +243,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () {},
+        onPressed: () async {
+          // --- Firebase Authentication logic for sign up ---
+          try {
+            UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+              email: _emailController.text.trim(),
+              password: _passwordController.text.trim(),
+            );
+
+            // --- Optionally, you can update the display name ---
+            await userCredential.user?.updateDisplayName(_nameController.text.trim());
+
+            // --- Navigate to HomeScreen on successful registration ---
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          } on FirebaseAuthException catch (e) {
+            // --- Show error to user ---
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(e.message ?? 'Sign up failed')),
+            );
+          }
+        },
         icon: const Icon(Icons.person_outline, color: Colors.white),
         label: const Text(
           'Create Account',
@@ -303,7 +337,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
         ),
         style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 12), // Reduced padding
+          padding: const EdgeInsets.symmetric(vertical: 12),
           side: BorderSide(color: Colors.grey.shade300),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -326,12 +360,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 color: Color(0xFF008060),
                 fontWeight: FontWeight.bold,
               ),
-              recognizer:
-                  TapGestureRecognizer()
-                    ..onTap = () {
-                      // Go back to the previous screen (Sign In Screen)
-                      Navigator.of(context).pop();
-                    },
+              recognizer: TapGestureRecognizer()
+                ..onTap = () {
+                  Navigator.of(context).pop(); // Back to SignInScreen
+                },
             ),
           ],
         ),
@@ -339,14 +371,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  /// Builds the footer text at the bottom of the screen.
   Widget _buildFooter() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: GestureDetector(
           onTap: () {
-            // Add navigation logic to welcome screen if needed
+            // TODO: Add navigation logic to welcome screen
           },
           child: const Text(
             'Back to welcome screen',

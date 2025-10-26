@@ -2,6 +2,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'SignUpScreen.dart';
 import 'HomeScreen.dart';
+import 'ForgotPasswordScreen.dart'; // <-- Forgot password screen
+
+// --- Firebase imports ---
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -13,14 +17,27 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   bool _isPasswordVisible = false;
 
+  // --- Controllers for email/password ---
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  // --- Firebase Auth instance ---
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F9), // A light background color
+      backgroundColor: const Color(0xFFF7F9F9),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-          // Using a Column with an Expanded ListView to keep it on one screen
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -42,7 +59,7 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  /// Builds the top back button.
+  // --- Back button ---
   Widget _buildAppBar() {
     return InkWell(
       onTap: () {
@@ -58,15 +75,14 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  /// Builds the header with logo and welcome text.
+  // --- Header ---
   Widget _buildHeader() {
     return Center(
       child: Column(
         children: [
-          // Logo
           Container(
-            width: 100, // Reduced logo size
-            height: 100, // Reduced logo size
+            width: 100,
+            height: 100,
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -102,7 +118,7 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  /// Builds the main sign-in form container.
+  // --- Sign-in form ---
   Widget _buildSignInForm() {
     return Container(
       padding: const EdgeInsets.all(20.0),
@@ -123,13 +139,14 @@ class _SignInScreenState extends State<SignInScreen> {
         children: [
           const Text(
             'Email',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: Colors.black54,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54),
           ),
           const SizedBox(height: 8),
-          _buildTextField(hint: 'your@email.com', icon: Icons.email_outlined),
+          _buildTextField(
+            hint: 'your@email.com',
+            icon: Icons.email_outlined,
+            controller: _emailController,
+          ),
           const SizedBox(height: 16),
           _buildPasswordHeader(),
           const SizedBox(height: 8),
@@ -145,8 +162,7 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  // --- Helper widgets for the form ---
-
+  // --- Password row with forgot link ---
   Widget _buildPasswordHeader() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -157,7 +173,10 @@ class _SignInScreenState extends State<SignInScreen> {
         ),
         GestureDetector(
           onTap: () {
-            // Handle forgot password
+            // Navigate to ForgotPasswordScreen
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+            );
           },
           child: const Text(
             'Forgot Password?',
@@ -171,8 +190,13 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  Widget _buildTextField({required String hint, required IconData icon}) {
+  Widget _buildTextField({
+    required String hint,
+    required IconData icon,
+    TextEditingController? controller,
+  }) {
     return TextField(
+      controller: controller,
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon),
@@ -190,16 +214,15 @@ class _SignInScreenState extends State<SignInScreen> {
 
   Widget _buildPasswordField() {
     return TextField(
+      controller: _passwordController,
       obscureText: !_isPasswordVisible,
       decoration: InputDecoration(
         hintText: '********',
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
-          icon: Icon(
-            _isPasswordVisible
-                ? Icons.visibility_outlined
-                : Icons.visibility_off_outlined,
-          ),
+          icon: Icon(_isPasswordVisible
+              ? Icons.visibility_outlined
+              : Icons.visibility_off_outlined),
           onPressed: () {
             setState(() {
               _isPasswordVisible = !_isPasswordVisible;
@@ -218,14 +241,27 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
+  // --- Sign in button with Firebase logic ---
   Widget _buildSignInButton() {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
+        onPressed: () async {
+          try {
+            UserCredential userCredential =
+                await _auth.signInWithEmailAndPassword(
+              email: _emailController.text.trim(),
+              password: _passwordController.text.trim(),
+            );
+            // --- Navigate to HomeScreen on success ---
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          } on FirebaseAuthException catch (e) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(e.message ?? 'Sign in failed')),
+            );
+          }
         },
         icon: const Icon(Icons.email_outlined, color: Colors.white),
         label: const Text(
@@ -296,15 +332,12 @@ class _SignInScreenState extends State<SignInScreen> {
                   color: Color(0xFF008060),
                   fontWeight: FontWeight.bold,
                 ),
-                recognizer:
-                    TapGestureRecognizer()
-                      ..onTap = () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const SignUpScreen(),
-                          ),
-                        );
-                      },
+                recognizer: TapGestureRecognizer()
+                  ..onTap = () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (context) => const SignUpScreen()),
+                    );
+                  },
               ),
             ],
           ),
@@ -324,16 +357,12 @@ class _SignInScreenState extends State<SignInScreen> {
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: onPressed,
-        icon:
-            isIconData
-                ? Icon(iconData, color: Colors.black54)
-                : Image.asset(iconAsset!, height: 20),
+        icon: isIconData
+            ? Icon(iconData, color: Colors.black54)
+            : Image.asset(iconAsset!, height: 20),
         label: Text(
           label,
-          style: const TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
         ),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -346,14 +375,13 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  /// Builds the footer text at the bottom.
   Widget _buildFooter() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: GestureDetector(
           onTap: () {
-            // Add navigation logic to welcome screen if needed
+            // TODO: Add navigation logic to welcome screen
           },
           child: const Text(
             'Back to welcome screen',
