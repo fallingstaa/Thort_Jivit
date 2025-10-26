@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "262571734333",
+    "project_id": "thort-jivit",
+    "storage_bucket": "thort-jivit.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:262571734333:android:91a037240c1b38c3274154",
+        "android_client_info": {
+          "package_name": "com.example.life_record"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDm4m_-KnrT8kZ_Jwe-Yh6IUeUMyNOedm8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
