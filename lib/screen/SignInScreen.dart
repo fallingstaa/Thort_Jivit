@@ -6,6 +6,7 @@ import 'ForgotPasswordScreen.dart'; // <-- Forgot password screen
 
 // --- Firebase imports ---
 import 'package:firebase_auth/firebase_auth.dart';
+import 'homepage.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
