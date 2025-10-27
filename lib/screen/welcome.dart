@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'SignInScreen.dart';
-import 'SignUpScreen.dart';
-import 'package:thort_jivit/screen/SignInScreen.dart';
-import 'package:thort_jivit/screen/SignUpScreen.dart';
+import 'auth/SignInScreen.dart';
+import 'auth/SignUpScreen.dart';
+import 'package:thort_jivit/screen/auth/SignInScreen.dart';
+import 'package:thort_jivit/screen/auth/SignUpScreen.dart';
 
 class WelcomeBackgroundPainter extends CustomPainter {
   @override

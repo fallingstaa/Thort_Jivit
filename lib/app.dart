@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:thort_jivit/screen/homepage.dart';
-import 'package:thort_jivit/screen/profile.dart';
+import 'package:thort_jivit/screen/music/MusicScreen.dart';
+import 'package:thort_jivit/screen/auth/SignInScreen.dart';
+import 'package:thort_jivit/screen/auth/SignUpScreen.dart';
+import 'package:thort_jivit/screen/home/HomePage.dart';
+
 import 'package:thort_jivit/screen/welcome.dart'; // Ensure correct path
 
 import 'package:thort_jivit/theme.dart';
@@ -52,7 +55,7 @@ class App extends StatelessWidget {
           ),
         ),
       ),
-      home: const HomePage(),
+      home: const SignInScreen(),
     );
   }
 }

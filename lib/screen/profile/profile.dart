@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:thort_jivit/screen/auth/SignInScreen.dart';
+import 'edit_profile_screen.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
@@ -13,6 +16,136 @@ class _ProfilePageState extends State<ProfilePage> {
   bool darkModeEnabled = false;
   bool soundEffectsEnabled = true;
 
+  // Firebase user
+  final User? currentUser = FirebaseAuth.instance.currentUser;
+
+  // Get user display name
+  String get userName {
+    if (currentUser?.displayName != null &&
+        currentUser!.displayName!.isNotEmpty) {
+      return currentUser!.displayName!;
+    } else if (currentUser?.email != null) {
+      return currentUser!.email!.split('@')[0];
+    }
+    return 'User';
+  }
+
+  // Get user email
+  String get userEmail {
+    return currentUser?.email ?? 'No email';
+  }
+
+  // Get user initials for avatar
+  String get userInitials {
+    if (userName.isNotEmpty) {
+      final nameParts = userName.split(' ');
+      if (nameParts.length >= 2) {
+        return nameParts[0][0].toUpperCase() + nameParts[1][0].toUpperCase();
+      }
+      return userName[0].toUpperCase();
+    }
+    return 'U';
+  }
+
+  // Get member since date
+  String get memberSince {
+    if (currentUser?.metadata.creationTime != null) {
+      final date = currentUser!.metadata.creationTime!;
+      final months = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+      return 'Member since ${months[date.month - 1]} ${date.year}';
+    }
+    return 'Member since 2025';
+  }
+
+  // Navigate to edit profile screen
+  Future<void> _navigateToEditProfile() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const EditProfileScreen()),
+    );
+
+    // Refresh profile if changes were made
+    if (result == true && mounted) {
+      setState(() {
+        // Reload the current user to get updated data
+        FirebaseAuth.instance.currentUser?.reload();
+      });
+    }
+  }
+
+  // Sign out function
+  Future<void> _signOut() async {
+    // Show confirmation dialog
+    final shouldSignOut = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Text(
+              'Sign Out',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            content: const Text('Are you sure you want to sign out?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFE53935),
+                ),
+                child: const Text('Sign Out'),
+              ),
+            ],
+          ),
+    );
+
+    if (shouldSignOut == true) {
+      try {
+        // Sign out from Firebase
+        await FirebaseAuth.instance.signOut();
+
+        // Navigate to SignInScreen and remove all previous routes
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const SignInScreen()),
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        // Show error message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error signing out: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -20,17 +153,7 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: IconButton(
-            icon: const Icon(
-              Icons.arrow_back,
-              color: Color(0xFF009688),
-              size: 24,
-            ),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ),
+        automaticallyImplyLeading: false,
         title: const Text(
           'Profile',
           style: TextStyle(
@@ -93,6 +216,41 @@ class _ProfilePageState extends State<ProfilePage> {
                                   end: Alignment.bottomRight,
                                 ),
                               ),
+                              child:
+                                  currentUser?.photoURL != null
+                                      ? ClipRRect(
+                                        borderRadius: BorderRadius.circular(38),
+                                        child: Image.network(
+                                          currentUser!.photoURL!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (
+                                            context,
+                                            error,
+                                            stackTrace,
+                                          ) {
+                                            return Center(
+                                              child: Text(
+                                                userInitials,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 28,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      )
+                                      : Center(
+                                        child: Text(
+                                          userInitials,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
                             ),
                             Positioned(
                               bottom: 0,
@@ -119,33 +277,40 @@ class _ProfilePageState extends State<ProfilePage> {
                             children: [
                               const SizedBox(height: 2),
                               Row(
-                                children: const [
-                                  Text(
-                                    'Yun Mengheng',
-                                    style: TextStyle(
-                                      fontSize: 19,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF1A1A1A),
-                                      height: 1.2,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      userName,
+                                      style: const TextStyle(
+                                        fontSize: 19,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF1A1A1A),
+                                        height: 1.2,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  SizedBox(width: 3),
-                                  Text('👑', style: TextStyle(fontSize: 16)),
+                                  const SizedBox(width: 3),
+                                  const Text(
+                                    '👑',
+                                    style: TextStyle(fontSize: 16),
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 5),
-                              const Text(
-                                'heng@email.com',
-                                style: TextStyle(
+                              Text(
+                                userEmail,
+                                style: const TextStyle(
                                   fontSize: 13.5,
                                   color: Color(0xFF6B6B6B),
                                   height: 1.3,
                                 ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 1),
-                              const Text(
-                                'Member since January 2025',
-                                style: TextStyle(
+                              Text(
+                                memberSince,
+                                style: const TextStyle(
                                   fontSize: 11.5,
                                   color: Color(0xFF9E9E9E),
                                   height: 1.4,
@@ -168,7 +333,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: TextButton.icon(
-                        onPressed: () {},
+                        onPressed: _navigateToEditProfile,
                         style: TextButton.styleFrom(
                           foregroundColor: const Color(0xFF009688),
                           padding: EdgeInsets.zero,
@@ -384,14 +549,14 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: () {},
+                    onTap: _signOut,
                     borderRadius: BorderRadius.circular(20),
                     child: Center(
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
                           Icon(
-                            Icons.arrow_forward,
+                            Icons.logout,
                             size: 19,
                             color: Color(0xFFE53935),
                           ),

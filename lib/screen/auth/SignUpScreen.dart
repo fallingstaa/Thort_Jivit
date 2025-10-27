@@ -1,10 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'SignInScreen.dart';
-import 'HomeScreen.dart';
 
 // --- Added Firebase imports ---
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../main_navigation.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -43,10 +42,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildAppBar(),
               Expanded(
                 child: ListView(
                   children: [
+                    const SizedBox(height: 20),
                     _buildHeader(),
                     const SizedBox(height: 24),
                     _buildSignUpForm(),
@@ -57,22 +56,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  // --- Top back button ---
-  Widget _buildAppBar() {
-    return InkWell(
-      onTap: () {
-        if (Navigator.canPop(context)) {
-          Navigator.of(context).pop();
-        }
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        child: const Icon(Icons.arrow_back, color: Color(0xFF007A55)),
       ),
     );
   }
@@ -141,11 +124,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
         children: [
           _buildFormLabel('Full Name'),
           const SizedBox(height: 8),
-          _buildTextField(hint: 'Meng heng', icon: Icons.person_outline, controller: _nameController),
+          _buildTextField(
+            hint: 'Meng heng',
+            icon: Icons.person_outline,
+            controller: _nameController,
+          ),
           const SizedBox(height: 16),
           _buildFormLabel('Email'),
           const SizedBox(height: 8),
-          _buildTextField(hint: 'your@email.com', icon: Icons.email_outlined, controller: _emailController),
+          _buildTextField(
+            hint: 'your@email.com',
+            icon: Icons.email_outlined,
+            controller: _emailController,
+          ),
           const SizedBox(height: 16),
           _buildFormLabel('Password'),
           const SizedBox(height: 8),
@@ -175,7 +166,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildTextField({required String hint, required IconData icon, TextEditingController? controller}) {
+  Widget _buildTextField({
+    required String hint,
+    required IconData icon,
+    TextEditingController? controller,
+  }) {
     return TextField(
       controller: controller,
       decoration: InputDecoration(
@@ -197,12 +192,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return TextField(
       controller: _passwordController,
       obscureText: !_isPasswordVisible,
+      onChanged: (value) {
+        setState(() {}); // Rebuild to update the tick mark
+      },
       decoration: InputDecoration(
         hintText: '********',
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
           icon: Icon(
-            _isPasswordVisible ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+            _isPasswordVisible
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
           ),
           onPressed: () {
             setState(() {
@@ -223,20 +223,163 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Widget _buildPasswordRequirement() {
+    final bool isValid = _passwordController.text.length >= 8;
+
     return Row(
       children: [
         Icon(
-          Icons.radio_button_unchecked,
-          color: Colors.grey.shade500,
+          isValid ? Icons.check_circle : Icons.radio_button_unchecked,
+          color: isValid ? const Color(0xFF4CAF50) : Colors.grey.shade500,
           size: 20,
         ),
         const SizedBox(width: 8),
         Text(
           'Must be at least 8 characters',
-          style: TextStyle(color: Colors.grey.shade600),
+          style: TextStyle(
+            color: isValid ? const Color(0xFF4CAF50) : Colors.grey.shade600,
+            fontWeight: isValid ? FontWeight.w500 : FontWeight.normal,
+          ),
         ),
       ],
     );
+  }
+
+  // --- Show error dialog ---
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Row(
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Color(0xFFE53935),
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              message,
+              style: const TextStyle(fontSize: 15, color: Color(0xFF424242)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(
+                    color: Color(0xFF008060),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // --- Show success dialog ---
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Row(
+              children: [
+                const Icon(
+                  Icons.check_circle,
+                  color: Color(0xFF4CAF50),
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Success!',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            content: const Text(
+              'Your account has been created successfully!',
+              style: TextStyle(fontSize: 15, color: Color(0xFF424242)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (context) => const MainNavigation(),
+                    ),
+                  );
+                },
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(
+                    color: Color(0xFF008060),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // --- Validate inputs ---
+  bool _validateInputs() {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (name.isEmpty) {
+      _showErrorDialog('Name Required', 'Please enter your full name.');
+      return false;
+    }
+
+    if (email.isEmpty) {
+      _showErrorDialog('Email Required', 'Please enter your email address.');
+      return false;
+    }
+
+    if (!email.contains('@') || !email.contains('.')) {
+      _showErrorDialog('Invalid Email', 'Please enter a valid email address.');
+      return false;
+    }
+
+    if (password.isEmpty) {
+      _showErrorDialog('Password Required', 'Please enter a password.');
+      return false;
+    }
+
+    if (password.length < 8) {
+      _showErrorDialog(
+        'Weak Password',
+        'Password must be at least 8 characters long.',
+      );
+      return false;
+    }
+
+    return true;
   }
 
   Widget _buildCreateAccountButton() {
@@ -244,25 +387,44 @@ class _SignUpScreenState extends State<SignUpScreen> {
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: () async {
+          // Validate inputs first
+          if (!_validateInputs()) return;
+
           // --- Firebase Authentication logic for sign up ---
           try {
-            UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
-              email: _emailController.text.trim(),
-              password: _passwordController.text.trim(),
-            );
+            UserCredential userCredential = await _auth
+                .createUserWithEmailAndPassword(
+                  email: _emailController.text.trim(),
+                  password: _passwordController.text.trim(),
+                );
 
             // --- Optionally, you can update the display name ---
-            await userCredential.user?.updateDisplayName(_nameController.text.trim());
+            await userCredential.user?.updateDisplayName(
+              _nameController.text.trim(),
+            );
 
-            // --- Navigate to HomeScreen on successful registration ---
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => const HomeScreen()),
-            );
+            // --- Show success dialog and then navigate ---
+            if (mounted) {
+              _showSuccessDialog();
+            }
           } on FirebaseAuthException catch (e) {
-            // --- Show error to user ---
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(e.message ?? 'Sign up failed')),
-            );
+            String errorMessage = 'Sign up failed';
+            if (e.code == 'email-already-in-use') {
+              errorMessage =
+                  'This email is already registered. Please sign in instead.';
+            } else if (e.code == 'invalid-email') {
+              errorMessage = 'Invalid email address format.';
+            } else if (e.code == 'weak-password') {
+              errorMessage =
+                  'Password is too weak. Please use a stronger password.';
+            } else if (e.code == 'operation-not-allowed') {
+              errorMessage = 'Email/password accounts are not enabled.';
+            } else if (e.message != null) {
+              errorMessage = e.message!;
+            }
+            _showErrorDialog('Sign Up Failed', errorMessage);
+          } catch (e) {
+            _showErrorDialog('Error', 'An unexpected error occurred.');
           }
         },
         icon: const Icon(Icons.person_outline, color: Colors.white),
@@ -360,10 +522,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 color: Color(0xFF008060),
                 fontWeight: FontWeight.bold,
               ),
-              recognizer: TapGestureRecognizer()
-                ..onTap = () {
-                  Navigator.of(context).pop(); // Back to SignInScreen
-                },
+              recognizer:
+                  TapGestureRecognizer()
+                    ..onTap = () {
+                      Navigator.of(context).pop(); // Back to SignInScreen
+                    },
             ),
           ],
         ),

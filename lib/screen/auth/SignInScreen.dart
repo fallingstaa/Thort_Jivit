@@ -1,12 +1,11 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'SignUpScreen.dart';
-import 'HomeScreen.dart';
 import 'ForgotPasswordScreen.dart'; // <-- Forgot password screen
 
 // --- Firebase imports ---
 import 'package:firebase_auth/firebase_auth.dart';
-import 'homepage.dart';
+import '../../main_navigation.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -42,10 +41,10 @@ class _SignInScreenState extends State<SignInScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildAppBar(),
               Expanded(
                 child: ListView(
                   children: [
+                    const SizedBox(height: 20),
                     _buildHeader(),
                     const SizedBox(height: 24),
                     _buildSignInForm(),
@@ -56,22 +55,6 @@ class _SignInScreenState extends State<SignInScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  // --- Back button ---
-  Widget _buildAppBar() {
-    return InkWell(
-      onTap: () {
-        if (Navigator.canPop(context)) {
-          Navigator.of(context).pop();
-        }
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        child: const Icon(Icons.arrow_back, color: Color(0xFF007A55)),
       ),
     );
   }
@@ -140,7 +123,10 @@ class _SignInScreenState extends State<SignInScreen> {
         children: [
           const Text(
             'Email',
-            style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.black54,
+            ),
           ),
           const SizedBox(height: 8),
           _buildTextField(
@@ -176,7 +162,9 @@ class _SignInScreenState extends State<SignInScreen> {
           onTap: () {
             // Navigate to ForgotPasswordScreen
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+              MaterialPageRoute(
+                builder: (context) => const ForgotPasswordScreen(),
+              ),
             );
           },
           child: const Text(
@@ -221,9 +209,11 @@ class _SignInScreenState extends State<SignInScreen> {
         hintText: '********',
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
-          icon: Icon(_isPasswordVisible
-              ? Icons.visibility_outlined
-              : Icons.visibility_off_outlined),
+          icon: Icon(
+            _isPasswordVisible
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
+          ),
           onPressed: () {
             setState(() {
               _isPasswordVisible = !_isPasswordVisible;
@@ -242,26 +232,112 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
+  // --- Show error dialog ---
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Row(
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Color(0xFFE53935),
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              message,
+              style: const TextStyle(fontSize: 15, color: Color(0xFF424242)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(
+                    color: Color(0xFF008060),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // --- Validate inputs ---
+  bool _validateInputs() {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty) {
+      _showErrorDialog('Email Required', 'Please enter your email address.');
+      return false;
+    }
+
+    if (!email.contains('@') || !email.contains('.')) {
+      _showErrorDialog('Invalid Email', 'Please enter a valid email address.');
+      return false;
+    }
+
+    if (password.isEmpty) {
+      _showErrorDialog('Password Required', 'Please enter your password.');
+      return false;
+    }
+
+    return true;
+  }
+
   // --- Sign in button with Firebase logic ---
   Widget _buildSignInButton() {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: () async {
+          // Validate inputs first
+          if (!_validateInputs()) return;
+
           try {
-            UserCredential userCredential =
-                await _auth.signInWithEmailAndPassword(
+            await _auth.signInWithEmailAndPassword(
               email: _emailController.text.trim(),
               password: _passwordController.text.trim(),
             );
-            // --- Navigate to HomeScreen on success ---
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => const HomeScreen()),
-            );
+            // --- Navigate to MainNavigation on success ---
+            if (mounted) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const MainNavigation()),
+              );
+            }
           } on FirebaseAuthException catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(e.message ?? 'Sign in failed')),
-            );
+            String errorMessage = 'Sign in failed';
+            if (e.code == 'user-not-found') {
+              errorMessage = 'No account found with this email.';
+            } else if (e.code == 'wrong-password') {
+              errorMessage = 'Incorrect password. Please try again.';
+            } else if (e.code == 'invalid-email') {
+              errorMessage = 'Invalid email address format.';
+            } else if (e.code == 'user-disabled') {
+              errorMessage = 'This account has been disabled.';
+            } else if (e.message != null) {
+              errorMessage = e.message!;
+            }
+            _showErrorDialog('Sign In Failed', errorMessage);
+          } catch (e) {
+            _showErrorDialog('Error', 'An unexpected error occurred.');
           }
         },
         icon: const Icon(Icons.email_outlined, color: Colors.white),
@@ -333,12 +409,15 @@ class _SignInScreenState extends State<SignInScreen> {
                   color: Color(0xFF008060),
                   fontWeight: FontWeight.bold,
                 ),
-                recognizer: TapGestureRecognizer()
-                  ..onTap = () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const SignUpScreen()),
-                    );
-                  },
+                recognizer:
+                    TapGestureRecognizer()
+                      ..onTap = () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const SignUpScreen(),
+                          ),
+                        );
+                      },
               ),
             ],
           ),
@@ -358,12 +437,16 @@ class _SignInScreenState extends State<SignInScreen> {
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: onPressed,
-        icon: isIconData
-            ? Icon(iconData, color: Colors.black54)
-            : Image.asset(iconAsset!, height: 20),
+        icon:
+            isIconData
+                ? Icon(iconData, color: Colors.black54)
+                : Image.asset(iconAsset!, height: 20),
         label: Text(
           label,
-          style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 12),

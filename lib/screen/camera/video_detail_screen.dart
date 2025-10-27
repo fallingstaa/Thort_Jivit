@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
-import 'homepage.dart';
+import '../home/HomePage.dart';
 
 class VideoDetailScreen extends StatefulWidget {
   final String videoPath;

@@ -1,9 +1,96 @@
 import 'package:flutter/material.dart';
-import 'calendar.dart';
-import 'record_screen.dart';
+import '../calender/calendar.dart';
+import '../profile/profile.dart';
+import '../camera/record_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class HomePage extends StatelessWidget {
-  const HomePage({Key? key}) : super(key: key);
+import '../videos/videos_screen.dart';
+
+
+
+class HomePage extends StatefulWidget {
+  final bool showBottomNav;
+
+  const HomePage({Key? key, this.showBottomNav = true}) : super(key: key);
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  // Get current user from Firebase
+  final User? currentUser = FirebaseAuth.instance.currentUser;
+
+  // Get username - with fallback options
+  String get userName {
+    if (currentUser?.displayName != null &&
+        currentUser!.displayName!.isNotEmpty) {
+      return currentUser!.displayName!;
+    } else if (currentUser?.email != null) {
+      // If no display name, use the part before @ in email
+      return currentUser!.email!.split('@')[0];
+    }
+    return 'User'; // Fallback if nothing is available
+  }
+
+  // Get current date formatted nicely
+  String _getCurrentDate() {
+    final now = DateTime.now();
+    final weekdays = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    final months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    return '${weekdays[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}';
+  }
+
+  // Build user initials widget
+  Widget _buildUserInitials() {
+    String initials = '';
+    if (userName.isNotEmpty) {
+      final nameParts = userName.split(' ');
+      if (nameParts.length >= 2) {
+        // First and last name initials
+        initials =
+            nameParts[0][0].toUpperCase() + nameParts[1][0].toUpperCase();
+      } else {
+        // Just first initial
+        initials = userName[0].toUpperCase();
+      }
+    } else {
+      initials = 'U';
+    }
+
+    return Center(
+      child: Text(
+        initials,
+        style: const TextStyle(
+          color: Color(0xFF008060),
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,31 +124,38 @@ class HomePage extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(100),
-                          image: const DecorationImage(
-                            image: NetworkImage(
-                              'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTwZXqrJa2pvpq6jbYW3iPrMRRuJ_4s-sktD_VizqP6cDm5eIoA1e1cgVZ_Zh8hVwtFiZk&usqp=CAU',
-                            ),
-                            fit: BoxFit.cover,
-                          ),
                         ),
+                        child:
+                            currentUser?.photoURL != null
+                                ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(100),
+                                  child: Image.network(
+                                    currentUser!.photoURL!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return _buildUserInitials();
+                                    },
+                                  ),
+                                )
+                                : _buildUserInitials(),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
+                          children: [
                             Text(
-                              'Hello, Sinet',
-                              style: TextStyle(
+                              'Hello, $userName',
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            SizedBox(height: 2),
+                            const SizedBox(height: 2),
                             Text(
-                              'Monday, October 6',
-                              style: TextStyle(
+                              _getCurrentDate(),
+                              style: const TextStyle(
                                 color: Colors.white70,
                                 fontSize: 14,
                               ),
@@ -178,9 +272,7 @@ class HomePage extends StatelessWidget {
                                 TextSpan(text: 'Your best streak:  '),
                                 TextSpan(
                                   text: '14 days',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
                               ],
                             ),
@@ -262,7 +354,6 @@ class HomePage extends StatelessWidget {
                 ),
 
                 // const SizedBox(height: 80),
-
                 Spacer(),
 
                 // Today's Prompt Card - Matching exact design
@@ -279,37 +370,69 @@ class HomePage extends StatelessWidget {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF5D9F6A),
-        unselectedItemColor: Colors.black45,
-        currentIndex: 0,
-        onTap: (index) {
-          if (index == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const CalendarScreen()),
-            );
-          }
-        },
-        selectedFontSize: 12,
-        unselectedFontSize: 12,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today),
-            label: 'Calendar',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.video_library),
-            label: 'Videos',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: 'Profile',
-          ),
-        ],
-      ),
+      bottomNavigationBar:
+          widget.showBottomNav
+              ? BottomNavigationBar(
+                type: BottomNavigationBarType.fixed,
+                selectedItemColor: const Color(0xFF5D9F6A),
+                unselectedItemColor: Colors.black45,
+                currentIndex: 0,
+                onTap: (index) {
+                  switch (index) {
+                    case 0:
+                      // Already on Home, do nothing
+                      break;
+                    case 1:
+                      // Navigate to Calendar
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CalendarScreen(),
+                        ),
+                      );
+                      break;
+                    case 2:
+                      // Navigate to Videos
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const VideosScreen(),
+                        ),
+                      );
+                      break;
+                    case 3:
+                      // Navigate to Profile
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ProfilePage(),
+                        ),
+                      );
+                      break;
+                  }
+                },
+                selectedFontSize: 12,
+                unselectedFontSize: 12,
+                items: const [
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.home),
+                    label: 'Home',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.calendar_today),
+                    label: 'Calendar',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.video_library),
+                    label: 'Videos',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.person_outline),
+                    label: 'Profile',
+                  ),
+                ],
+              )
+              : null,
     );
   }
 }

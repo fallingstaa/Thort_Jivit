@@ -8,26 +8,6 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  int _selectedIndex = 1; 
-
-  void _onItemTapped(int index) {
-    if (index == _selectedIndex) return;
-
-    switch (index) {
-      case 0:
-        Navigator.pushReplacementNamed(context, '/home');
-        break;
-      case 1:
-        break;
-      case 2:
-        Navigator.pushReplacementNamed(context, '/videos');
-        break;
-      case 3:
-        Navigator.pushReplacementNamed(context, '/profile');
-        break;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -41,43 +21,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
               _buildMonthSelector(),
               const SizedBox(height: 12),
               _buildCalendarGrid(),
-              const SizedBox(height: 24), 
+              const SizedBox(height: 24),
               _buildAddRecordingButton(),
               const SizedBox(height: 12),
               _buildActionButtons(),
               const SizedBox(height: 12),
               _buildMonthlySummaryCard(),
-              const SizedBox(height: 12), 
+              const SizedBox(height: 12),
             ],
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      // bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
-
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 1,
       centerTitle: true,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color:  const Color(0xFF00A981)),
-        onPressed: () {
-            if (Navigator.canPop(context)) {
-              Navigator.pop(context);
-            } else {
-              Navigator.pushReplacementNamed(context, '/home');
-            }
-        },
-      ),
+      automaticallyImplyLeading: false,
       title: const Text(
         'Calendar',
-        style: TextStyle(
-          color:  const Color(0xFF00A981),
-          fontWeight: FontWeight.bold,
-        ),
+        style: TextStyle(color: Color(0xFF00A981), fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -114,10 +81,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildCalendarGrid() {
-    final List<String> weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    final int firstDayOffset = 3; 
+    final List<String> weekDays = [
+      'Sun',
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+    ];
+    final int firstDayOffset = 3;
     final int daysInMonth = 31;
-    
+
     final Map<int, String> recordedDays = {
       3: '☕️',
       5: '🌇',
@@ -140,7 +115,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: weekDays.map((day) => Text(day, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w500))).toList(),
+            children:
+                weekDays
+                    .map(
+                      (day) => Text(
+                        day,
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    )
+                    .toList(),
           ),
           const SizedBox(height: 12),
           GridView.builder(
@@ -156,10 +142,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 return const SizedBox.shrink();
               }
               final int day = index - firstDayOffset + 1;
-              return _buildCalendarDay(
-                day: day,
-                emoji: recordedDays[day],
-              );
+              return _buildCalendarDay(day: day, emoji: recordedDays[day]);
             },
           ),
         ],
@@ -173,7 +156,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       margin: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: isRecorded ? const Color(0xFF00A981) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12), 
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Stack(
         alignment: Alignment.center,
@@ -195,12 +178,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   color: Colors.black.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
-                child: Text(
-                  emoji,
-                  style: const TextStyle(fontSize: 10),
-                ),
+                child: Text(emoji, style: const TextStyle(fontSize: 10)),
               ),
-            )
+            ),
         ],
       ),
     );
@@ -214,7 +194,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text(
           'Add Missed Recording',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF00A981),
@@ -237,9 +221,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
             label: const Text('All Videos'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              foregroundColor:  const Color(0xFF00A981),
+              foregroundColor: const Color(0xFF00A981),
               side: BorderSide(color: const Color(0xFF00A981)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),
@@ -253,7 +239,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               foregroundColor: const Color(0xFF00A981),
               side: BorderSide(color: const Color(0xFF00A981)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),
@@ -273,7 +261,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
         children: [
           const Text(
             'This Month',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -294,32 +286,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
       children: [
         Text(
           value,
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF00A981)),
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF00A981),
+          ),
         ),
         const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.grey, fontSize: 14),
-        ),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
       ],
-    );
-  }
-
-  Widget _buildBottomNavigationBar() {
-    return BottomNavigationBar(
-      items: const <BottomNavigationBarItem>[
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: 'Calendar'),
-        BottomNavigationBarItem(icon: Icon(Icons.videocam), label: 'Videos'),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-      ],
-      currentIndex: _selectedIndex,
-      selectedItemColor: const Color(0xFF00A981),
-      unselectedItemColor: Colors.grey,
-      showUnselectedLabels: true,
-      onTap: _onItemTapped,
-      type: BottomNavigationBarType.fixed,
     );
   }
 }
-
