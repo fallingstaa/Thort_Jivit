@@ -596,7 +596,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
-        height: 84,
+        constraints: const BoxConstraints(minHeight: 84),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -617,6 +617,7 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
                     width: 48,
@@ -631,7 +632,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           title,
@@ -641,6 +642,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             color: Color(0xFF1A1A1A),
                             height: 1.2,
                           ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                         const SizedBox(height: 3),
                         Text(
@@ -650,6 +653,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             color: Color(0xFF6B6B6B),
                             height: 1.3,
                           ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
                         ),
                       ],
                     ),

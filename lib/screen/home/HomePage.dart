@@ -6,8 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../videos/videos_screen.dart';
 
-
-
 class HomePage extends StatefulWidget {
   final bool showBottomNav;
 
@@ -95,280 +93,261 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: Column(
-              children: [
-                // Header Section
-                Container(
-                  // margin: const EdgeInsets.all(16),
-                  padding: EdgeInsets.only(
-                    top: MediaQuery.of(context).padding.top + 20,
-                    left: 20,
-                    right: 20,
-                    bottom: 20,
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // Header Section
+            Container(
+              // margin: const EdgeInsets.all(16),
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + 20,
+                left: 20,
+                right: 20,
+                bottom: 20,
+              ),
+              decoration: BoxDecoration(
+                color: Color(0xFF008060),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child:
+                        currentUser?.photoURL != null
+                            ? ClipRRect(
+                              borderRadius: BorderRadius.circular(100),
+                              child: Image.network(
+                                currentUser!.photoURL!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return _buildUserInitials();
+                                },
+                              ),
+                            )
+                            : _buildUserInitials(),
                   ),
-                  decoration: BoxDecoration(
-                    color: Color(0xFF008060),
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(20),
-                      bottomRight: Radius.circular(20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Hello, $userName',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _getCurrentDate(),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(100),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(
+                          Icons.local_fire_department,
+                          color: Color(0xFFFF8C42),
+                          size: 20,
                         ),
-                        child:
-                            currentUser?.photoURL != null
-                                ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(100),
-                                  child: Image.network(
-                                    currentUser!.photoURL!,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return _buildUserInitials();
-                                    },
-                                  ),
-                                )
-                                : _buildUserInitials(),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Hello, $userName',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _getCurrentDate(),
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
+                        SizedBox(width: 4),
+                        Text(
+                          '5-day streak',
+                          style: TextStyle(
+                            color: Color(0xFFFF8C42),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: const [
-                            Icon(
-                              Icons.local_fire_department,
-                              color: Color(0xFFFF8C42),
-                              size: 20,
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              '5-day streak',
-                              style: TextStyle(
-                                color: Color(0xFFFF8C42),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+                ],
+              ),
+            ),
 
-                // Weekly Progress Card
-                Container(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
+            // Weekly Progress Card
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
                   ),
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
+                ],
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: const [
-                              Icon(
-                                Icons.trending_up,
-                                size: 20,
-                                color: Colors.black87,
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                'Weekly Progress',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Text(
-                            '6/7 days',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.black45,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: const [
-                          DayCheckmark(day: 'M', isCompleted: true),
-                          DayCheckmark(day: 'T', isCompleted: true),
-                          DayCheckmark(day: 'W', isCompleted: true),
-                          DayCheckmark(day: 'T', isCompleted: true),
-                          DayCheckmark(day: 'F', isCompleted: true),
-                          DayCheckmark(day: 'S', isCompleted: true),
-                          DayCheckmark(day: 'S', isCompleted: false),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          RichText(
-                            text: const TextSpan(
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.black87,
-                              ),
-                              children: [
-                                TextSpan(text: 'Your best streak:  '),
-                                TextSpan(
-                                  text: '14 days',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ],
+                          Icon(
+                            Icons.trending_up,
+                            size: 20,
+                            color: Colors.black87,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Weekly Progress',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
                             ),
                           ),
-                          Row(
-                            children: const [
-                              Text(
-                                'View calendar',
-                                style: TextStyle(
-                                  color: Color(0xFF5D9F6A),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              SizedBox(width: 4),
-                              Icon(
-                                Icons.calendar_today,
-                                size: 16,
-                                color: Color(0xFF5D9F6A),
-                              ),
-                            ],
+                        ],
+                      ),
+                      const Text(
+                        '6/7 days',
+                        style: TextStyle(fontSize: 12, color: Colors.black45),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: const [
+                      DayCheckmark(day: 'M', isCompleted: true),
+                      DayCheckmark(day: 'T', isCompleted: true),
+                      DayCheckmark(day: 'W', isCompleted: true),
+                      DayCheckmark(day: 'T', isCompleted: true),
+                      DayCheckmark(day: 'F', isCompleted: true),
+                      DayCheckmark(day: 'S', isCompleted: true),
+                      DayCheckmark(day: 'S', isCompleted: false),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      RichText(
+                        text: const TextSpan(
+                          style: TextStyle(fontSize: 14, color: Colors.black87),
+                          children: [
+                            TextSpan(text: 'Your best streak:  '),
+                            TextSpan(
+                              text: '14 days',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Row(
+                        children: const [
+                          Text(
+                            'View calendar',
+                            style: TextStyle(
+                              color: Color(0xFF5D9F6A),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          SizedBox(width: 4),
+                          Icon(
+                            Icons.calendar_today,
+                            size: 16,
+                            color: Color(0xFF5D9F6A),
                           ),
                         ],
                       ),
                     ],
                   ),
-                ),
+                ],
+              ),
+            ),
 
-                const SizedBox(height: 100),
+            const SizedBox(height: 40),
 
-                // Record Button
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+            // Record Button
+            Center(
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => RecordScreen()),
+                  );
+                },
+                child: Column(
                   children: [
-                    Center(
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => RecordScreen(),
-                            ),
-                          );
-                        },
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 100,
-                              height: 100,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: const Color(0xFF008060),
-                                  width: 8,
-                                ),
-                              ),
-                              child: Container(
-                                margin: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFF008060),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'Record Now',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF008060),
-                              ),
-                            ),
-                          ],
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFF008060),
+                          width: 8,
                         ),
+                      ),
+                      child: Container(
+                        margin: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF008060),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Record Now',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF008060),
                       ),
                     ),
                   ],
                 ),
-
-                // const SizedBox(height: 80),
-                Spacer(),
-
-                // Today's Prompt Card - Matching exact design
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: TodaysPromptCard(),
-                  ),
-                ),
-
-                // const SizedBox(height: 80),
-              ],
+              ),
             ),
-          ),
-        ],
+
+            const SizedBox(height: 40),
+
+            // Today's Prompt Card - Matching exact design
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12.0,
+                vertical: 12.0,
+              ),
+              child: TodaysPromptCard(),
+            ),
+
+            // Bottom spacing to account for bottom navigation bar
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
+          ],
+        ),
       ),
       bottomNavigationBar:
           widget.showBottomNav
