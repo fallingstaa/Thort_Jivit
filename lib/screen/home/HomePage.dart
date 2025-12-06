@@ -22,11 +22,13 @@ class _HomePageState extends State<HomePage> {
   final FirestoreService _firestoreService = FirestoreService();
 
   int _currentStreak = 0;
+  List<Map<String, dynamic>> _weekDays = [];
 
   @override
   void initState() {
     super.initState();
     _loadStreak();
+    _loadWeekData();
   }
 
   Future<void> _loadStreak() async {
@@ -34,6 +36,15 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _currentStreak = streak;
     });
+  }
+
+  Future<void> _loadWeekData() async {
+    final weekData = await _firestoreService.getCurrentWeekData();
+    if (weekData != null) {
+      setState(() {
+        _weekDays = List<Map<String, dynamic>>.from(weekData['days'] ?? []);
+      });
+    }
   }
 
   // Get username - with fallback options
@@ -246,24 +257,30 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ],
                       ),
-                      const Text(
-                        '6/7 days',
-                        style: TextStyle(fontSize: 12, color: Colors.black45),
+                      Text(
+                        '${_weekDays.where((d) => d['hasVideo'] == true).length}/${_weekDays.length} days',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black45,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: const [
-                      DayCheckmark(day: 'M', isCompleted: true),
-                      DayCheckmark(day: 'T', isCompleted: true),
-                      DayCheckmark(day: 'W', isCompleted: true),
-                      DayCheckmark(day: 'T', isCompleted: true),
-                      DayCheckmark(day: 'F', isCompleted: true),
-                      DayCheckmark(day: 'S', isCompleted: true),
-                      DayCheckmark(day: 'S', isCompleted: false),
-                    ],
+                    children:
+                        _weekDays.map((dayData) {
+                          final DateTime date = dayData['date'] as DateTime;
+                          final String dayLetter =
+                              dayData['dayLetter'] as String;
+                          final bool hasVideo = dayData['hasVideo'] as bool;
+                          return DayCheckmark(
+                            day: dayLetter,
+                            date: date,
+                            isCompleted: hasVideo,
+                          );
+                        }).toList(),
                   ),
                   const SizedBox(height: 20),
                   Row(
@@ -281,23 +298,33 @@ class _HomePageState extends State<HomePage> {
                           ],
                         ),
                       ),
-                      Row(
-                        children: const [
-                          Text(
-                            'View calendar',
-                            style: TextStyle(
-                              color: Color(0xFF5D9F6A),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
+                      InkWell(
+                        onTap: () {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const CalendarScreen(),
                             ),
-                          ),
-                          SizedBox(width: 4),
-                          Icon(
-                            Icons.calendar_today,
-                            size: 16,
-                            color: Color(0xFF5D9F6A),
-                          ),
-                        ],
+                          );
+                        },
+                        child: Row(
+                          children: const [
+                            Text(
+                              'View calendar',
+                              style: TextStyle(
+                                color: Color(0xFF5D9F6A),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                            SizedBox(width: 4),
+                            Icon(
+                              Icons.calendar_today,
+                              size: 16,
+                              color: Color(0xFF5D9F6A),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -380,19 +407,16 @@ class _HomePageState extends State<HomePage> {
                       break;
                     case 1:
                       // Navigate to Calendar
-                      Navigator.push(
+                      Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const CalendarScreen(),
                         ),
-                      ).then((_) {
-                        // Refresh streak when returning from calendar
-                        _loadStreak();
-                      });
+                      );
                       break;
                     case 2:
                       // Navigate to Videos
-                      Navigator.push(
+                      Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const VideosScreen(),
@@ -401,7 +425,7 @@ class _HomePageState extends State<HomePage> {
                       break;
                     case 3:
                       // Navigate to Profile
-                      Navigator.push(
+                      Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const ProfilePage(),
@@ -438,10 +462,15 @@ class _HomePageState extends State<HomePage> {
 
 class DayCheckmark extends StatelessWidget {
   final String day;
+  final DateTime date;
   final bool isCompleted;
 
-  const DayCheckmark({Key? key, required this.day, required this.isCompleted})
-    : super(key: key);
+  const DayCheckmark({
+    Key? key,
+    required this.day,
+    required this.date,
+    required this.isCompleted,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -452,7 +481,7 @@ class DayCheckmark extends StatelessWidget {
           height: 40,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isCompleted ? const Color(0xFF008060) : Colors.grey.shade200,
+            color: isCompleted ? Colors.blue : Colors.grey.shade200,
           ),
           child:
               isCompleted
@@ -463,13 +492,20 @@ class DayCheckmark extends StatelessWidget {
                   )
                   : null,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           day,
           style: TextStyle(
             fontSize: 12,
             color: isCompleted ? Colors.black87 : Colors.black45,
             fontWeight: isCompleted ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        Text(
+          '${date.month}/${date.day}',
+          style: TextStyle(
+            fontSize: 10,
+            color: isCompleted ? Colors.black54 : Colors.black38,
           ),
         ),
       ],

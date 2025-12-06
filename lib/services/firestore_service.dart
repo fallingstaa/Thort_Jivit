@@ -227,6 +227,62 @@ class FirestoreService {
     return result;
   }
 
+  /// Get the current active week's data including real dates and recorded status for each day.
+  /// Returns a map with 'weekStart' (DateTime), 'days' (List of 7 maps with 'date', 'dayLetter', 'hasVideo').
+  Future<Map<String, dynamic>?> getCurrentWeekData() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+
+    final now = DateTime.now();
+    final weekInfo = await _getWeekContainingDate(now);
+
+    if (weekInfo == null) return null;
+
+    final DateTime weekStart = weekInfo['startDate'] as DateTime;
+    final String weekId = weekInfo['weekId'] as String;
+
+    // Fetch recorded videos for this week
+    final uid = user.uid;
+    final videosCol = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('weeks')
+        .doc(weekId)
+        .collection('videos');
+
+    final videosSnapshot = await videosCol.get();
+    final Set<int> recordedDays = {};
+
+    for (final doc in videosSnapshot.docs) {
+      final data = doc.data();
+      if (data.containsKey('timestamp')) {
+        final ts = data['timestamp'];
+        if (ts is Timestamp) {
+          final dt = ts.toDate().toLocal();
+          final dayIndex = dt.difference(weekStart).inDays;
+          if (dayIndex >= 0 && dayIndex < 7) {
+            recordedDays.add(dayIndex);
+          }
+        }
+      }
+    }
+
+    // Build the 7 days data
+    final List<Map<String, dynamic>> days = [];
+    const dayLetters = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+    for (int i = 0; i < 7; i++) {
+      final date = weekStart.add(Duration(days: i));
+      days.add({
+        'date': date,
+        'dayLetter': dayLetters[date.weekday % 7],
+        'hasVideo': recordedDays.contains(i),
+      });
+    }
+
+    return {'weekStart': weekStart, 'days': days};
+  }
+
   /// Return the week document that contains [date], or null.
   Future<Map<String, dynamic>?> _getWeekContainingDate(DateTime date) async {
     final user = _auth.currentUser;
@@ -871,6 +927,7 @@ class FirestoreService {
               'firstVideoDate': data['firstVideoDate'] ?? '',
               'lastVideoDate': data['lastVideoDate'] ?? '',
               'mergeOrder': data['mergeOrder'] ?? [],
+              'selectedMusicTrack': data['selectedMusicTrack'] ?? '',
             });
           }
         }
@@ -899,6 +956,7 @@ class FirestoreService {
               'firstVideoDate': data['firstVideoDate'] ?? '',
               'lastVideoDate': data['lastVideoDate'] ?? '',
               'mergeOrder': data['mergeOrder'] ?? [],
+              'selectedMusicTrack': data['selectedMusicTrack'] ?? '',
             });
           }
         }
@@ -1058,5 +1116,54 @@ class FirestoreService {
         });
 
     print('[FIRESTORE] [ADMIN] All recap data cleared for userId: $userId');
+  }
+
+  /// Update the selected music track and recap URL for a recap
+  Future<void> updateRecapMusicTrack({
+    required String weekId,
+    required String recapId,
+    required String musicFileName,
+    required String recapUrl,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('User not signed in');
+
+    final uid = user.uid;
+    print(
+      '[FIRESTORE] Updating recap music track for weekId: $weekId, recapId: $recapId, music: $musicFileName',
+    );
+
+    try {
+      final recapDoc = _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('weeks')
+          .doc(weekId)
+          .collection('recaps')
+          .doc(recapId);
+
+      await recapDoc.set({
+        'recapUrl': recapUrl,
+        'selectedMusicTrack': musicFileName,
+        'musicUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Keep the latest recap URL and selected track at the week level too
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('weeks')
+          .doc(weekId)
+          .set({
+            'recapUrl': recapUrl,
+            'selectedMusicTrack': musicFileName,
+            'musicUpdatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+
+      print('[FIRESTORE] Music track updated successfully');
+    } catch (e) {
+      print('[FIRESTORE] Error updating music track: $e');
+      rethrow;
+    }
   }
 }

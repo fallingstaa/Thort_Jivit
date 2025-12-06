@@ -49,18 +49,25 @@ class VideoCombinerService {
         throw Exception('User not signed in');
       }
 
-      // Get the Firebase project ID from the current config
-      // The function will be at: https://region-projectId.cloudfunctions.net/mergeVideos
+      // Use the mergeVideos function (Gen 1)
       final functionUrl =
-          'https://us-central1-thort-jivit.cloudfunctions.net/mergeVideos?uid=${user.uid}';
+          'https://us-central1-thort-jivit.cloudfunctions.net/mergeVideos';
 
       print('[VIDEO_COMBINER] Calling Cloud Function: $functionUrl');
 
       final response = await http
           .post(
             Uri.parse(functionUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'videoUrls': videoUrls}),
+            headers: {
+              'Content-Type': 'application/json',
+              // Pass ID token so the function can authorize storage access
+              'Authorization': 'Bearer ${await user.getIdToken()}',
+            },
+            body: jsonEncode({
+              'videoUrls': videoUrls,
+              'weekId': 'week_${DateTime.now().millisecondsSinceEpoch}',
+              'uid': user.uid,
+            }),
           )
           .timeout(
             const Duration(seconds: 120), // 2 minute timeout for merging
@@ -153,5 +160,77 @@ class VideoCombinerService {
   /// Check if enough videos exist for recap
   bool canCreateRecap(int videoCount) {
     return videoCount >= 3;
+  }
+
+  /// Replace the music track on an existing recap video (web via Cloud Function)
+  Future<Map<String, dynamic>> changeRecapMusic({
+    required String recapUrl,
+    required String weekId,
+    required String musicFileName,
+  }) async {
+    try {
+      if (!kIsWeb) {
+        // Placeholder: mobile/desktop path can be added later
+        return {
+          'success': false,
+          'message': 'Changing recap music is only supported on web for now',
+        };
+      }
+
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('User not signed in');
+
+      final functionUrl =
+          'https://us-central1-thort-jivit.cloudfunctions.net/changeRecapMusic';
+
+      print('[VIDEO_COMBINER] Calling changeRecapMusic: $functionUrl');
+
+      final response = await http
+          .post(
+            Uri.parse(functionUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ${await user.getIdToken()}',
+            },
+            body: jsonEncode({
+              'recapUrl': recapUrl,
+              'musicFileName': musicFileName,
+              'weekId': weekId,
+              'uid': user.uid,
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 120),
+            onTimeout: () {
+              throw Exception('Cloud Function timeout - music change too slow');
+            },
+          );
+
+      print(
+        '[VIDEO_COMBINER] changeRecapMusic response: ${response.statusCode}',
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          return {
+            'success': true,
+            'recapUrl': data['recapUrl'] ?? '',
+            'message': data['message'] ?? 'Music updated',
+            'selectedMusic': data['selectedMusic'] ?? musicFileName,
+          };
+        } else {
+          throw Exception(data['error'] ?? 'Unknown error changing music');
+        }
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(
+          'Cloud Function error: ${errorData['error'] ?? 'Unknown error'}',
+        );
+      }
+    } catch (e) {
+      print('[VIDEO_COMBINER] changeRecapMusic error: $e');
+      return {'success': false, 'message': 'Error changing music: $e'};
+    }
   }
 }

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:thort_jivit/services/firestore_service.dart';
 import 'package:thort_jivit/services/video_combiner_service.dart';
+import 'package:thort_jivit/services/music_service.dart';
 import 'package:thort_jivit/screen/videos/video_player_screen.dart';
 import 'package:thort_jivit/services/admin_utils.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class VideosScreen extends StatefulWidget {
   const VideosScreen({Key? key}) : super(key: key);
@@ -888,6 +891,33 @@ class _VideosScreenState extends State<VideosScreen>
                         ],
                       ),
 
+                    const SizedBox(height: 8),
+
+                    // Selected music track (if any)
+                    if ((compilation['selectedMusicTrack'] ?? '')
+                        .toString()
+                        .isNotEmpty)
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.music_note,
+                            size: 16,
+                            color: Color(0xFF757575),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              compilation['selectedMusicTrack'],
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF757575),
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
                     const SizedBox(height: 12),
 
                     // Action Buttons Row
@@ -910,9 +940,7 @@ class _VideosScreenState extends State<VideosScreen>
                           icon: Icons.file_download_outlined,
                           label: 'Save',
                           color: const Color(0xFF009688),
-                          onTap: () {
-                            // Handle save
-                          },
+                          onTap: () => _saveRecap(compilation),
                         ),
 
                         const SizedBox(width: 12),
@@ -922,9 +950,7 @@ class _VideosScreenState extends State<VideosScreen>
                           icon: Icons.music_note_outlined,
                           label: '',
                           color: const Color(0xFF009688),
-                          onTap: () {
-                            // Handle music
-                          },
+                          onTap: () => _openMusicPicker(compilation),
                           iconOnly: true,
                         ),
 
@@ -1040,6 +1066,254 @@ class _VideosScreenState extends State<VideosScreen>
           ),
         );
       }
+    }
+  }
+
+  Future<void> _openMusicPicker(Map<String, dynamic> compilation) async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return FutureBuilder<List<String>>(
+          future: MusicService().getMusicLibrary(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(
+                height: 200,
+                child: Center(
+                  child: CircularProgressIndicator(color: Color(0xFF009688)),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return SizedBox(
+                height: 200,
+                child: Center(
+                  child: Text(
+                    'Error loading music: ${snapshot.error}',
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+              );
+            }
+
+            final tracks = snapshot.data ?? [];
+            if (tracks.isEmpty) {
+              return const SizedBox(
+                height: 200,
+                child: Center(child: Text('No music found in music_library')),
+              );
+            }
+
+            return SizedBox(
+              height: 320,
+              child: Column(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'Choose background music',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: tracks.length,
+                      itemBuilder: (context, index) {
+                        final track = tracks[index];
+                        final isSelected =
+                            (compilation['selectedMusicTrack'] ?? '') == track;
+                        return ListTile(
+                          leading: const Icon(
+                            Icons.music_note,
+                            color: Color(0xFF009688),
+                          ),
+                          title: Text(track),
+                          trailing:
+                              isSelected
+                                  ? const Icon(
+                                    Icons.check,
+                                    color: Color(0xFF009688),
+                                  )
+                                  : null,
+                          onTap: () {
+                            Navigator.pop(context);
+                            _confirmChangeMusic(compilation, track);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmChangeMusic(
+    Map<String, dynamic> compilation,
+    String track,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Change music?'),
+            content: Text('Replace the recap background music with "$track"?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Confirm'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed == true) {
+      await _applyMusicSelection(compilation, track);
+    }
+  }
+
+  Future<void> _applyMusicSelection(
+    Map<String, dynamic> compilation,
+    String track,
+  ) async {
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => const Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Color(0xFF009688)),
+                    SizedBox(height: 16),
+                    Text('Updating music...'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+    );
+
+    try {
+      final result = await _videoCombiner.changeRecapMusic(
+        recapUrl: compilation['recapUrl'],
+        weekId: compilation['weekId'],
+        musicFileName: track,
+      );
+
+      if (result['success'] == true) {
+        final newUrl = result['recapUrl'] as String? ?? '';
+        await _firestoreService.updateRecapMusicTrack(
+          weekId: compilation['weekId'],
+          recapId: compilation['id'],
+          musicFileName: track,
+          recapUrl: newUrl,
+        );
+
+        // Update local data immediately so Save uses fresh audio version
+        compilation['recapUrl'] = newUrl;
+        compilation['selectedMusicTrack'] = track;
+
+        await _loadVideos();
+
+        if (mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Music updated to "$track"'),
+              backgroundColor: const Color(0xFF009688),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        throw Exception(result['message'] ?? 'Failed to change music');
+      }
+    } catch (e) {
+      print('[VIDEOS] Error changing music: $e');
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating music: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveRecap(Map<String, dynamic> compilation) async {
+    final recapUrl = (compilation['recapUrl'] as String?) ?? '';
+
+    if (recapUrl.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No recap URL available to download.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final uri = Uri.tryParse(recapUrl);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid recap URL.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final mode =
+          kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication;
+      final launched = await launchUrl(uri, mode: mode);
+
+      if (!launched) throw Exception('Could not open recap link');
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Opening recap download...'),
+          backgroundColor: Color(0xFF009688),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to open recap. If this is your first run after adding url_launcher, fully restart the app. Error: $e',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
