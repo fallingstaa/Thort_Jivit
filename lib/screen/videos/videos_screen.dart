@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:thort_jivit/services/firestore_service.dart';
+import 'package:thort_jivit/services/video_combiner_service.dart';
 import 'package:thort_jivit/screen/videos/video_player_screen.dart';
+import 'package:thort_jivit/services/admin_utils.dart';
 
 class VideosScreen extends StatefulWidget {
   const VideosScreen({Key? key}) : super(key: key);
@@ -12,17 +14,22 @@ class VideosScreen extends StatefulWidget {
 class _VideosScreenState extends State<VideosScreen>
     with SingleTickerProviderStateMixin {
   final FirestoreService _firestoreService = FirestoreService();
+  final VideoCombinerService _videoCombiner = VideoCombinerService();
   String selectedTab = 'Daily';
   final List<String> tabs = ['Daily', 'Weekly'];
   List<Map<String, dynamic>> dailyVideos = [];
+  List<Map<String, dynamic>> weeklyVideos = [];
   bool _isLoading = true;
+  bool _isCreatingRecap = false;
+  bool _canCreateRecap = false;
+  bool _isAdmin = false;
   AnimationController? _animationController;
   Animation<double>? _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
-    _loadDailyVideos();
+    _loadVideos();
 
     // Setup blinking animation
     _animationController = AnimationController(
@@ -35,15 +42,40 @@ class _VideosScreenState extends State<VideosScreen>
     );
   }
 
-  Future<void> _loadDailyVideos() async {
+  Future<void> _loadVideos() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
       final videos = await _firestoreService.getAllUploadedVideos();
+      bool isAdmin = await isWebAdmin();
+      final recaps = await _firestoreService.getWeeklyRecaps(isAdmin: isAdmin);
+
+      // Check if current week can create recap
+      final activeWeek = await _firestoreService.getActiveWeekNow();
+      bool canCreate = false;
+      if (activeWeek != null) {
+        final weekId = activeWeek['weekId'] as String;
+        final hasEnoughVideos = _videoCombiner.canCreateRecap(
+          videos.where((v) => v['weekId'] == weekId).length,
+        );
+
+        // For admin, always allow creating recap
+        if (isAdmin) {
+          canCreate = hasEnoughVideos;
+        } else {
+          // For normal users: check if week already has a recap
+          final alreadyHasRecap = await _firestoreService.weekHasRecap(weekId);
+          canCreate = hasEnoughVideos && !alreadyHasRecap;
+        }
+      }
+
       setState(() {
         dailyVideos = videos;
+        weeklyVideos = recaps;
+        _canCreateRecap = canCreate;
+        _isAdmin = isAdmin;
         _isLoading = false;
       });
     } catch (e) {
@@ -64,7 +96,7 @@ class _VideosScreenState extends State<VideosScreen>
   List<Map<String, dynamic>> get currentVideos {
     switch (selectedTab) {
       case 'Weekly':
-        return []; // Weekly recap not implemented yet
+        return weeklyVideos;
       default:
         return dailyVideos;
     }
@@ -75,6 +107,148 @@ class _VideosScreenState extends State<VideosScreen>
       final video = dailyVideos.firstWhere((v) => v['id'] == videoId);
       video['isFavorite'] = !video['isFavorite'];
     });
+  }
+
+  Future<void> _createWeeklyRecap() async {
+    if (_isCreatingRecap) return;
+
+    setState(() {
+      _isCreatingRecap = true;
+    });
+
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (context) => const Center(
+              child: Card(
+                child: Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: Color(0xFF009688)),
+                      SizedBox(height: 16),
+                      Text(
+                        'Creating your weekly recap...',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+      );
+
+      // Get active week
+      final activeWeek = await _firestoreService.getActiveWeekNow();
+      if (activeWeek == null) {
+        throw Exception('No active week found');
+      }
+
+      final weekId = activeWeek['weekId'] as String;
+
+      // Get all daily videos for this week
+      final weekVideos =
+          dailyVideos.where((v) => v['weekId'] == weekId).toList();
+      final videoUrls =
+          weekVideos.map((v) => v['storageDownloadUrl'] as String).toList();
+      final videoPaths =
+          weekVideos
+              .map((v) => v['filePath'] as String? ?? '')
+              .where((p) => p.isNotEmpty)
+              .toList();
+
+      // Combine all videos for the week
+      final result = await _videoCombiner.combineVideos(
+        videoUrls: videoUrls,
+        videoPaths: videoPaths,
+      );
+
+      if (result['success'] == true) {
+        // Get first and last video dates for display
+        String firstVideoDate = '';
+        String lastVideoDate = '';
+        List<Map<String, dynamic>> mergeOrder = [];
+        if (weekVideos.isNotEmpty) {
+          final sortedVideos = List.from(weekVideos);
+          sortedVideos.sort(
+            (a, b) => (a['uploadedDate'] as DateTime).compareTo(
+              b['uploadedDate'] as DateTime,
+            ),
+          );
+          firstVideoDate = sortedVideos.first['uploadedDate'].toString();
+          lastVideoDate = sortedVideos.last['uploadedDate'].toString();
+
+          // Create merge order with position
+          for (int i = 0; i < sortedVideos.length; i++) {
+            mergeOrder.add({
+              'position': i + 1,
+              'day': sortedVideos[i]['dayIndex'] ?? 0,
+              'uploadedDate': sortedVideos[i]['uploadedDate'].toString(),
+              'duration': sortedVideos[i]['videoDuration'] ?? 'unknown',
+              'fileName': sortedVideos[i]['fileName'] ?? 'Video ${i + 1}',
+            });
+          }
+        }
+
+        // Save weekly recap
+        await _firestoreService.saveWeeklyRecap(
+          weekId: weekId,
+          recapUrl: result['recapUrl'],
+          clipsCount: result['clipsCount'],
+          duration: result['duration'],
+          isAdmin: _isAdmin,
+          firstVideoDate: firstVideoDate,
+          lastVideoDate: lastVideoDate,
+          mergeOrder: mergeOrder,
+        );
+
+        // Reload videos
+        await _loadVideos();
+
+        // Close loading dialog
+        if (mounted) Navigator.of(context).pop();
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✨ Weekly recap created successfully!'),
+              backgroundColor: Color(0xFF009688),
+              duration: Duration(seconds: 3),
+            ),
+          );
+
+          // Switch to Weekly tab
+          setState(() {
+            selectedTab = 'Weekly';
+          });
+        }
+      } else {
+        throw Exception(result['message'] ?? 'Failed to create recap');
+      }
+    } catch (e) {
+      print('[VIDEOS] Error creating recap: $e');
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCreatingRecap = false;
+        });
+      }
+    }
   }
 
   void _showVideoOptions(String videoId) {
@@ -282,9 +456,7 @@ class _VideosScreenState extends State<VideosScreen>
         ],
       ),
       floatingActionButton:
-          selectedTab == 'Daily' &&
-                  dailyVideos.isNotEmpty &&
-                  _scaleAnimation != null
+          selectedTab == 'Daily' && _canCreateRecap && _scaleAnimation != null
               ? ScaleTransition(
                 scale: _scaleAnimation!,
                 child: Container(
@@ -311,9 +483,7 @@ class _VideosScreenState extends State<VideosScreen>
                     color: Colors.transparent,
                     borderRadius: BorderRadius.circular(30),
                     child: InkWell(
-                      onTap: () {
-                        // TODO: Add roll into memories action
-                      },
+                      onTap: _canCreateRecap ? _createWeeklyRecap : null,
                       borderRadius: BorderRadius.circular(30),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -515,6 +685,21 @@ class _VideosScreenState extends State<VideosScreen>
         child: InkWell(
           onTap: () {
             // Navigate to compilation video player
+            if (compilation['recapUrl'] != null &&
+                compilation['recapUrl'].toString().isNotEmpty) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => VideoPlayerScreen(
+                        videoUrl: compilation['recapUrl'],
+                        emoji: '🎬',
+                        description: compilation['title'] ?? 'Weekly Recap',
+                        date: compilation['timestamp'] ?? '',
+                      ),
+                ),
+              );
+            }
           },
           borderRadius: BorderRadius.circular(20),
           child: Column(
@@ -527,21 +712,101 @@ class _VideosScreenState extends State<VideosScreen>
                 ),
                 child: AspectRatio(
                   aspectRatio: 16 / 9,
-                  child: Image.asset(
-                    compilation['thumbnail'],
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: const Color(0xFFE0E0E0),
-                        child: const Center(
-                          child: Icon(
-                            Icons.play_circle_outline,
-                            size: 64,
-                            color: Color(0xFF757575),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Color(0xFF0D0D0D), // Pure black
+                          Color(0xFF1C1C1C), // Slightly lighter black
+                          Color(0xFF0D0D0D), // Pure black
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.6),
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        // Film grain texture overlay
+                        Positioned.fill(
+                          child: Opacity(
+                            opacity: 0.08,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: RadialGradient(
+                                  center: Alignment.center,
+                                  radius: 1.0,
+                                  colors: [
+                                    Colors.white.withOpacity(0.05),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      );
-                    },
+                        // Vignette effect
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: RadialGradient(
+                                center: Alignment.center,
+                                radius: 0.7,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.7),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Center content
+                        Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.25),
+                                    width: 1.5,
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.movie_filter_outlined,
+                                  size: 52,
+                                  color: Colors.white.withOpacity(0.85),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'WEEKLY RECAP',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white.withOpacity(0.75),
+                                  letterSpacing: 3.5,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                width: 60,
+                                height: 1,
+                                color: Colors.white.withOpacity(0.2),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -568,6 +833,12 @@ class _VideosScreenState extends State<VideosScreen>
                     // Stats Row (clips count and duration)
                     Row(
                       children: [
+                        Icon(
+                          Icons.video_library_outlined,
+                          size: 16,
+                          color: Color(0xFF757575),
+                        ),
+                        const SizedBox(width: 4),
                         Text(
                           '${compilation['clipsCount']} clips',
                           style: const TextStyle(
@@ -576,16 +847,13 @@ class _VideosScreenState extends State<VideosScreen>
                             height: 1.3,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Container(
-                          width: 4,
-                          height: 4,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF757575),
-                            shape: BoxShape.circle,
-                          ),
+                        const SizedBox(width: 12),
+                        Icon(
+                          Icons.access_time_outlined,
+                          size: 16,
+                          color: Color(0xFF757575),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         Text(
                           compilation['duration'],
                           style: const TextStyle(
@@ -597,19 +865,30 @@ class _VideosScreenState extends State<VideosScreen>
                       ],
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 8),
 
-                    // Timestamp
-                    Text(
-                      compilation['timestamp'],
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF9E9E9E),
-                        height: 1.3,
+                    // Merge date and time
+                    if (compilation['createdAt'] != null)
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.access_time,
+                            size: 14,
+                            color: Color(0xFF9E9E9E),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Merged ${_formatMergeDateTime(compilation['createdAt'])}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF9E9E9E),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
 
                     // Action Buttons Row
                     Row(
@@ -648,6 +927,17 @@ class _VideosScreenState extends State<VideosScreen>
                           },
                           iconOnly: true,
                         ),
+
+                        const SizedBox(width: 12),
+
+                        // Delete Button
+                        _buildActionButton(
+                          icon: Icons.delete_outline,
+                          label: '',
+                          color: const Color(0xFFE53935),
+                          onTap: () => _deleteRecap(compilation),
+                          iconOnly: true,
+                        ),
                       ],
                     ),
                   ],
@@ -658,6 +948,151 @@ class _VideosScreenState extends State<VideosScreen>
         ),
       ),
     );
+  }
+
+  // Delete a weekly recap
+  Future<void> _deleteRecap(Map<String, dynamic> compilation) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Delete Recap?'),
+            content: const Text(
+              'Are you sure you want to delete this weekly recap? This action cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFE53935),
+                ),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (context) => const Center(
+              child: Card(
+                child: Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: Color(0xFF009688)),
+                      SizedBox(height: 16),
+                      Text('Deleting recap...'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+      );
+
+      // Delete the recap
+      await _firestoreService.deleteWeeklyRecap(
+        weekId: compilation['weekId'],
+        recapId: compilation['id'],
+        isAdmin: _isAdmin,
+      );
+
+      // Reload videos
+      await _loadVideos();
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Recap deleted successfully'),
+            backgroundColor: Color(0xFF009688),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('[VIDEOS] Error deleting recap: $e');
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting recap: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Format merge date and time for display
+  String _formatMergeDateTime(dynamic timestamp) {
+    if (timestamp == null) return 'unknown';
+
+    try {
+      DateTime dateTime;
+      if (timestamp is DateTime) {
+        dateTime = timestamp;
+      } else if (timestamp.toString().contains('Timestamp')) {
+        // Firestore Timestamp object
+        dateTime = (timestamp as dynamic).toDate();
+      } else {
+        return 'unknown';
+      }
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final yesterday = today.subtract(const Duration(days: 1));
+      final dateOnly = DateTime(dateTime.year, dateTime.month, dateTime.day);
+
+      // Format time
+      final hour = dateTime.hour.toString().padLeft(2, '0');
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      final timeStr = '$hour:$minute';
+
+      if (dateOnly == today) {
+        return 'today at $timeStr';
+      } else if (dateOnly == yesterday) {
+        return 'yesterday at $timeStr';
+      } else {
+        // Format as "Jan 15 at 14:30"
+        const months = [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
+        ];
+        return '${months[dateTime.month - 1]} ${dateTime.day} at $timeStr';
+      }
+    } catch (e) {
+      return 'unknown';
+    }
   }
 
   // Action button widget for compilation cards
