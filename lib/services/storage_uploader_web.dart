@@ -8,10 +8,24 @@ Future<String> uploadToStorage({
   String? contentType,
   String? filename,
 }) async {
-  if (bytes == null) throw ArgumentError('bytes are required on web platforms');
+  print('[WEB UPLOADER] Starting upload to: $storagePath');
+  print('[WEB UPLOADER] Bytes length: ${bytes?.length ?? 0}');
+  print('[WEB UPLOADER] Content type: ${contentType ?? "video/mp4"}');
+
+  if (bytes == null) {
+    print('[WEB UPLOADER] ERROR: bytes are null');
+    throw ArgumentError('bytes are required on web platforms');
+  }
 
   final ref = FirebaseStorage.instance.ref().child(storagePath);
   final metadata = SettableMetadata(contentType: contentType ?? 'video/mp4');
+
+  print('[WEB UPLOADER] Starting putData...');
   await ref.putData(bytes, metadata);
-  return await ref.getDownloadURL();
+
+  print('[WEB UPLOADER] Getting download URL...');
+  final url = await ref.getDownloadURL();
+  print('[WEB UPLOADER] Upload complete. URL length: ${url.length}');
+
+  return url;
 }

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:thort_jivit/services/firestore_service.dart';
+import 'package:thort_jivit/screen/videos/video_player_screen.dart';
 
 class VideosScreen extends StatefulWidget {
   const VideosScreen({Key? key}) : super(key: key);
@@ -7,112 +9,62 @@ class VideosScreen extends StatefulWidget {
   State<VideosScreen> createState() => _VideosScreenState();
 }
 
-class _VideosScreenState extends State<VideosScreen> {
+class _VideosScreenState extends State<VideosScreen>
+    with SingleTickerProviderStateMixin {
+  final FirestoreService _firestoreService = FirestoreService();
   String selectedTab = 'Daily';
-  final List<String> tabs = ['Daily', 'Weekly', 'Monthly'];
+  final List<String> tabs = ['Daily', 'Weekly'];
+  List<Map<String, dynamic>> dailyVideos = [];
+  bool _isLoading = true;
+  AnimationController? _animationController;
+  Animation<double>? _scaleAnimation;
 
-  // Mock data for daily videos
-  final List<Map<String, dynamic>> dailyVideos = [
-    {
-      'id': '1',
-      'title': 'Morning Coffee',
-      'date': 'October 8, 2025',
-      'thumbnail': 'assets/images/image.png',
-      'isFavorite': true,
-    },
-    {
-      'id': '2',
-      'title': 'Sunset Walk',
-      'date': 'October 7, 2025',
-      'thumbnail': 'assets/images/image.png',
-      'isFavorite': false,
-    },
-    {
-      'id': '3',
-      'title': 'Lunch Time',
-      'date': 'October 7, 2025',
-      'thumbnail': 'assets/images/image.png',
-      'isFavorite': false,
-    },
-    {
-      'id': '4',
-      'title': 'Reading Session',
-      'date': 'October 6, 2025',
-      'thumbnail': 'assets/images/image.png',
-      'isFavorite': false,
-    },
-    {
-      'id': '5',
-      'title': 'Workout Complete',
-      'date': 'October 6, 2025',
-      'thumbnail': 'assets/images/image.png',
-      'isFavorite': false,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadDailyVideos();
 
-  // Mock data for weekly compilations
-  final List<Map<String, dynamic>> weeklyVideos = [
-    {
-      'id': 'w1',
-      'title': 'Week of Oct 1-7',
-      'clipsCount': 7,
-      'duration': '3:45',
-      'timestamp': '2 days ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-    {
-      'id': 'w2',
-      'title': 'Week of Sep 24-30',
-      'clipsCount': 5,
-      'duration': '2:30',
-      'timestamp': '1 week ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-    {
-      'id': 'w3',
-      'title': 'Week of Sep 17-23',
-      'clipsCount': 6,
-      'duration': '3:12',
-      'timestamp': '2 weeks ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-  ];
+    // Setup blinking animation
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
 
-  // Mock data for monthly compilations
-  final List<Map<String, dynamic>> monthlyVideos = [
-    {
-      'id': 'm1',
-      'title': 'October 2025',
-      'clipsCount': 24,
-      'duration': '12:45',
-      'timestamp': '3 days ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-    {
-      'id': 'm2',
-      'title': 'September 2025',
-      'clipsCount': 28,
-      'duration': '15:20',
-      'timestamp': '1 month ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-    {
-      'id': 'm3',
-      'title': 'August 2025',
-      'clipsCount': 31,
-      'duration': '18:05',
-      'timestamp': '2 months ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-  ];
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+      CurvedAnimation(parent: _animationController!, curve: Curves.easeInOut),
+    );
+  }
+
+  Future<void> _loadDailyVideos() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final videos = await _firestoreService.getAllUploadedVideos();
+      setState(() {
+        dailyVideos = videos;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('[VIDEOS] Error loading videos: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController?.dispose();
+    super.dispose();
+  }
 
   // Get current video list based on selected tab
   List<Map<String, dynamic>> get currentVideos {
     switch (selectedTab) {
       case 'Weekly':
-        return weeklyVideos;
-      case 'Monthly':
-        return monthlyVideos;
+        return []; // Weekly recap not implemented yet
       default:
         return dailyVideos;
     }
@@ -269,23 +221,131 @@ class _VideosScreenState extends State<VideosScreen> {
 
           // Videos List
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: currentVideos.length,
-              itemBuilder: (context, index) {
-                final video = currentVideos[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child:
-                      selectedTab == 'Daily'
-                          ? _buildDailyVideoCard(video)
-                          : _buildCompilationCard(video),
-                );
-              },
-            ),
+            child:
+                _isLoading
+                    ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF009688),
+                      ),
+                    )
+                    : currentVideos.isEmpty
+                    ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            selectedTab == 'Weekly'
+                                ? Icons.movie_creation_outlined
+                                : Icons.videocam_off_outlined,
+                            size: 64,
+                            color: const Color(0xFFBDBDBD),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            selectedTab == 'Weekly'
+                                ? 'No weekly recap yet'
+                                : 'No videos yet',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF757575),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            selectedTab == 'Weekly'
+                                ? 'Weekly recap videos coming soon!'
+                                : 'Start recording your memories',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF9E9E9E),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                    : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: currentVideos.length,
+                      itemBuilder: (context, index) {
+                        final video = currentVideos[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child:
+                              selectedTab == 'Daily'
+                                  ? _buildDailyVideoCard(video)
+                                  : _buildCompilationCard(video),
+                        );
+                      },
+                    ),
           ),
         ],
       ),
+      floatingActionButton:
+          selectedTab == 'Daily' &&
+                  dailyVideos.isNotEmpty &&
+                  _scaleAnimation != null
+              ? ScaleTransition(
+                scale: _scaleAnimation!,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFFD700), // Gold
+                        Color(0xFFFFA500), // Orange-gold
+                        Color(0xFFFFD700), // Gold
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFFD700).withOpacity(0.5),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(30),
+                    child: InkWell(
+                      onTap: () {
+                        // TODO: Add roll into memories action
+                      },
+                      borderRadius: BorderRadius.circular(30),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 14,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(
+                              Icons.auto_awesome,
+                              size: 24,
+                              color: Colors.white,
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              'Roll into the Memories Now',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -309,8 +369,20 @@ class _VideosScreenState extends State<VideosScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            // Navigate to video detail screen
-            // Navigator.push(context, MaterialPageRoute(builder: (context) => VideoDetailScreen()));
+            // Navigate to video player screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (context) => VideoPlayerScreen(
+                      videoUrl: video['storageDownloadUrl'] ?? '',
+                      emoji: video['emoji']?.toString() ?? '',
+                      description:
+                          video['textNote']?.toString() ?? 'No description',
+                      date: video['date']?.toString() ?? '',
+                    ),
+              ),
+            );
           },
           borderRadius: BorderRadius.circular(16),
           child: Padding(
@@ -327,45 +399,54 @@ class _VideosScreenState extends State<VideosScreen> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      video['thumbnail'],
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: const Color(0xFFE0E0E0),
-                          child: const Icon(
-                            Icons.play_circle_outline,
-                            size: 32,
-                            color: Color(0xFF757575),
-                          ),
-                        );
-                      },
+                    child: Container(
+                      color: const Color(0xFFE0E0E0),
+                      child: const Icon(
+                        Icons.play_circle_outline,
+                        size: 32,
+                        color: Color(0xFF757575),
+                      ),
                     ),
                   ),
                 ),
 
                 const SizedBox(width: 12),
 
-                // Title and Date
+                // Emoji, Description and Date
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        video['title'],
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1A1A1A),
-                          height: 1.3,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          if (video['emoji'] != null &&
+                              video['emoji'].toString().isNotEmpty) ...[
+                            Text(
+                              video['emoji'].toString(),
+                              style: const TextStyle(fontSize: 18),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Expanded(
+                            child: Text(
+                              (video['textNote'] ?? 'No description')
+                                  .toString(),
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1A1A1A),
+                                height: 1.3,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        video['date'],
+                        (video['date'] ?? '').toString(),
                         style: const TextStyle(
                           fontSize: 12,
                           color: Color(0xFF9E9E9E),

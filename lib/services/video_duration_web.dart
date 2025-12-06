@@ -2,7 +2,11 @@ import 'dart:async';
 import 'dart:html' as html;
 import 'dart:typed_data';
 
-Future<Duration?> getVideoDuration({String? filePath, List<int>? bytes, String? filename}) async {
+Future<Duration?> getVideoDuration({
+  String? filePath,
+  List<int>? bytes,
+  String? filename,
+}) async {
   try {
     final data = bytes;
     if (data == null) return null;
@@ -80,7 +84,9 @@ Future<Duration?> getVideoDuration({String? filePath, List<int>? bytes, String? 
       try {
         final err = video.error;
         if (err != null) {
-          html.window.console.error('video.onError: code=${err.code} message=${err.message}');
+          html.window.console.error(
+            'video.onError: code=${err.code} message=${err.message}',
+          );
         } else {
           html.window.console.error('video.onError event: $ev');
         }
@@ -130,7 +136,11 @@ Duration? _parseMp4Duration(List<int> data) {
   int offset = 0;
   final len = bytes.length;
 
-  int readUint32(int off) => (bytes[off] << 24) | (bytes[off + 1] << 16) | (bytes[off + 2] << 8) | bytes[off + 3];
+  int readUint32(int off) =>
+      (bytes[off] << 24) |
+      (bytes[off + 1] << 16) |
+      (bytes[off + 2] << 8) |
+      bytes[off + 3];
   // no-op
 
   while (offset + 8 <= len) {
@@ -142,7 +152,9 @@ Duration? _parseMp4Duration(List<int> data) {
       int moovOff = offset + 8;
       while (moovOff + 8 <= moovEnd && moovOff + 8 <= len) {
         final csize = readUint32(moovOff);
-        final ctype = String.fromCharCodes(bytes.sublist(moovOff + 4, moovOff + 8));
+        final ctype = String.fromCharCodes(
+          bytes.sublist(moovOff + 4, moovOff + 8),
+        );
         if (ctype == 'mvhd') {
           final mvhdOff = moovOff;
           final version = bytes[mvhdOff + 8];
@@ -150,7 +162,9 @@ Duration? _parseMp4Duration(List<int> data) {
             final timescale = readUint32(mvhdOff + 20);
             final duration = readUint32(mvhdOff + 24);
             if (timescale > 0) {
-              return Duration(milliseconds: ((duration * 1000) / timescale).round());
+              return Duration(
+                milliseconds: ((duration * 1000) / timescale).round(),
+              );
             }
           } else if (version == 1) {
             final timescale = readUint32(mvhdOff + 28);
@@ -158,7 +172,9 @@ Duration? _parseMp4Duration(List<int> data) {
             final durationLo = readUint32(mvhdOff + 36);
             final duration = (durationHi << 32) | durationLo;
             if (timescale > 0) {
-              return Duration(milliseconds: ((duration * 1000) / timescale).round());
+              return Duration(
+                milliseconds: ((duration * 1000) / timescale).round(),
+              );
             }
           }
         }

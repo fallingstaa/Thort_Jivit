@@ -3,6 +3,7 @@ import '../calender/calendar.dart';
 import '../profile/profile.dart';
 import '../camera/record_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:thort_jivit/services/firestore_service.dart';
 
 import '../videos/videos_screen.dart';
 
@@ -18,6 +19,22 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   // Get current user from Firebase
   final User? currentUser = FirebaseAuth.instance.currentUser;
+  final FirestoreService _firestoreService = FirestoreService();
+
+  int _currentStreak = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStreak();
+  }
+
+  Future<void> _loadStreak() async {
+    final streak = await _firestoreService.getUserStreak();
+    setState(() {
+      _currentStreak = streak;
+    });
+  }
 
   // Get username - with fallback options
   String get userName {
@@ -169,16 +186,16 @@ class _HomePageState extends State<HomePage> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
-                      children: const [
-                        Icon(
+                      children: [
+                        const Icon(
                           Icons.local_fire_department,
                           color: Color(0xFFFF8C42),
                           size: 20,
                         ),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Text(
-                          '5-day streak',
-                          style: TextStyle(
+                          '$_currentStreak-day streak',
+                          style: const TextStyle(
                             color: Color(0xFFFF8C42),
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
@@ -368,7 +385,10 @@ class _HomePageState extends State<HomePage> {
                         MaterialPageRoute(
                           builder: (context) => const CalendarScreen(),
                         ),
-                      );
+                      ).then((_) {
+                        // Refresh streak when returning from calendar
+                        _loadStreak();
+                      });
                       break;
                     case 2:
                       // Navigate to Videos

@@ -17,13 +17,29 @@ class FirestoreService {
     required String weekId,
     DateTime? timestamp,
   }) async {
+    print('[FIRESTORE] Upload started');
+    print('[FIRESTORE] weekId: $weekId, dayIndex: $dayIndex');
+    print(
+      '[FIRESTORE] filePath: ${filePath ?? "null"}, bytes: ${bytes?.length ?? 0}',
+    );
+
     final user = _auth.currentUser;
-    if (user == null) throw Exception('User not signed in');
+    if (user == null) {
+      print('[FIRESTORE] ERROR: User not signed in');
+      throw Exception('User not signed in');
+    }
 
     final uid = user.uid;
+    print('[FIRESTORE] User ID: $uid');
     final safeName = filename ?? '${DateTime.now().millisecondsSinceEpoch}.mp4';
     final storagePath =
         'users/$uid/weeks/$weekId/videos/day$dayIndex/${safeName}';
+    print('[FIRESTORE] Storage path: $storagePath');
+
+    if (bytes == null && filePath == null) {
+      print('[FIRESTORE] ERROR: No file data provided');
+      throw Exception('No file data provided: on web, bytes are required.');
+    }
 
     // Use platform-aware uploader (putFile on IO, putData on web)
     String? downloadUrl;
@@ -46,6 +62,7 @@ class FirestoreService {
     }
 
     try {
+      print('[FIRESTORE] Calling uploadToStorage...');
       downloadUrl = await uploadToStorage(
         filePath: filePath,
         bytes: bytes,
@@ -53,17 +70,27 @@ class FirestoreService {
         contentType: 'video/mp4',
         filename: safeName,
       );
+      print(
+        '[FIRESTORE] Upload successful. URL: ${downloadUrl.substring(0, downloadUrl.length > 50 ? 50 : downloadUrl.length)}...',
+      );
       dataToSet['storageDownloadUrl'] = downloadUrl;
       dataToSet['storagePath'] = storagePath;
       dataToSet['status'] = 'uploaded';
     } catch (e) {
+      print('[FIRESTORE] Upload error: $e');
       // If upload fails, still write metadata so we don't lose the user's note.
       dataToSet['storagePath'] = storagePath;
       dataToSet['status'] = 'upload_failed';
       dataToSet['uploadError'] = e.toString();
     }
 
+    print('[FIRESTORE] Writing metadata to Firestore...');
     await docRef.set(dataToSet, SetOptions(merge: true));
+    print('[FIRESTORE] Metadata saved.');
+
+    // After successful metadata save, recalculate and update the user streak
+    print('[FIRESTORE] Recalculating user streak...');
+    await updateUserStreak();
 
     return downloadUrl ?? '';
   }
@@ -288,13 +315,13 @@ class FirestoreService {
       // Date must be inside the week range
       if (diff < 0 || diff >= 7) return false;
 
-      // Days 1..3 (diff 0..2) are allowed anytime during the active week
-      if (diff <= 2) return true;
-
-      // Days 4..7 (diff 3..6) allowed only when that calendar day has arrived
+      // Only allow upload for today + next 2 days (3 days total)
       final localDate = DateTime(date.year, date.month, date.day);
       final localNow = DateTime(now.year, now.month, now.day);
-      return localDate == localNow;
+      final daysDifference = localDate.difference(localNow).inDays;
+
+      // Can only upload for today (0) and next 2 days (1, 2)
+      return daysDifference >= 0 && daysDifference <= 2;
     } else {
       // allow starting a new week only if date is today
       final localDate = DateTime(date.year, date.month, date.day);
@@ -311,5 +338,236 @@ class FirestoreService {
     final diff = date.difference(start).inDays;
     if (diff < 0 || diff >= 7) return null;
     return diff + 1;
+  }
+
+  /// Calculate the current streak for the active week.
+  /// Streak = total count of days that have at least one uploaded video.
+  Future<int> calculateCurrentStreak() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      print('[STREAK] No user logged in');
+      return 0;
+    }
+
+    final week = await getActiveWeekNow();
+    if (week == null) {
+      print('[STREAK] No active week found');
+      return 0;
+    }
+
+    final weekId = week['weekId'] as String;
+    final uid = user.uid;
+    print('[STREAK] Calculating for weekId: $weekId, uid: $uid');
+
+    final videosCol = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('weeks')
+        .doc(weekId)
+        .collection('videos');
+
+    int streak = 0;
+    // Count all days that have valid uploaded videos
+    for (int dayIdx = 1; dayIdx <= 7; dayIdx++) {
+      final doc = await videosCol.doc('day$dayIdx').get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final status = data['status'];
+        final storageUrl = data['storageDownloadUrl'];
+
+        print('[STREAK] Day $dayIdx - exists: true');
+        print('[STREAK]   status: $status');
+        print(
+          '[STREAK]   storageUrl: ${storageUrl != null ? "present (${(storageUrl as String).length} chars)" : "null"}',
+        );
+
+        // Only count as a valid video if it has uploaded status or storage download URL
+        final hasUploadedVideo =
+            status == 'uploaded' ||
+            (storageUrl != null && (storageUrl as String).isNotEmpty);
+
+        if (hasUploadedVideo) {
+          streak++;
+          print('[STREAK]   ✓ Valid video - streak now: $streak');
+        } else {
+          print('[STREAK]   ✗ No valid uploaded video - skipping');
+        }
+      } else {
+        print('[STREAK] Day $dayIdx - no document - skipping');
+      }
+    }
+
+    print('[STREAK] Final streak: $streak');
+    return streak;
+  }
+
+  /// Update the user's streak in the user document.
+  Future<void> updateUserStreak() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final uid = user.uid;
+    final streak = await calculateCurrentStreak();
+
+    print('[FIRESTORE] Updating user streak to: $streak');
+    print('[FIRESTORE] Saving to users/$uid with streak=$streak');
+
+    await _firestore.collection('users').doc(uid).set({
+      'streak': streak,
+      'lastUploadDate': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    print('[FIRESTORE] Streak updated successfully');
+  }
+
+  /// Get the current streak from user document.
+  Future<int> getUserStreak() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      print('[FIRESTORE] No user, returning streak 0');
+      return 0;
+    }
+
+    final uid = user.uid;
+    print('[FIRESTORE] Getting streak for uid: $uid');
+
+    final doc = await _firestore.collection('users').doc(uid).get();
+    if (doc.exists) {
+      final data = doc.data();
+      print('[FIRESTORE] User document data: $data');
+      final streak = (data?['streak'] as int?) ?? 0;
+      print('[FIRESTORE] Retrieved streak: $streak');
+      return streak;
+    }
+
+    print('[FIRESTORE] User document does not exist');
+    return 0;
+  }
+
+  /// Get all uploaded videos across all weeks for the current user.
+  /// Returns a list of video data with emoji, textNote, date, thumbnail, etc.
+  Future<List<Map<String, dynamic>>> getAllUploadedVideos() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      print('[FIRESTORE] No user logged in');
+      return [];
+    }
+
+    final uid = user.uid;
+    print('[FIRESTORE] Fetching all videos for uid: $uid');
+
+    final weeksCol = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('weeks');
+    final weeksSnapshot = await weeksCol.get();
+
+    List<Map<String, dynamic>> allVideos = [];
+
+    for (final weekDoc in weeksSnapshot.docs) {
+      final weekData = weekDoc.data();
+      final weekId = weekDoc.id;
+      final startDate = (weekData['startDate'] as Timestamp?)?.toDate();
+
+      final videosCol = weeksCol.doc(weekId).collection('videos');
+      final videosSnapshot = await videosCol.get();
+
+      for (final videoDoc in videosSnapshot.docs) {
+        final data = videoDoc.data();
+
+        // Only include videos that have been successfully uploaded
+        if (data['status'] == 'uploaded' &&
+            data['storageDownloadUrl'] != null &&
+            (data['storageDownloadUrl'] as String).isNotEmpty) {
+          final dayIndex = data['dayIndex'] as int?;
+          DateTime? videoDate;
+          if (startDate != null && dayIndex != null) {
+            videoDate = startDate.add(Duration(days: dayIndex - 1));
+          }
+
+          allVideos.add({
+            'id': '${weekId}_${videoDoc.id}',
+            'weekId': weekId,
+            'dayId': videoDoc.id,
+            'emoji': data['emoji'] ?? '',
+            'textNote': data['textNote'] ?? '',
+            'storageDownloadUrl': data['storageDownloadUrl'],
+            'uploadedAt': data['uploadedAt'],
+            'timestamp': data['timestamp'],
+            'date':
+                videoDate != null
+                    ? '${_getMonthName(videoDate.month)} ${videoDate.day}, ${videoDate.year}'
+                    : '',
+            'isFavorite': false, // Can be extended later with favorites feature
+          });
+        }
+      }
+    }
+
+    // Sort by date (newest first)
+    allVideos.sort((a, b) {
+      final aTime = a['uploadedAt'] as Timestamp?;
+      final bTime = b['uploadedAt'] as Timestamp?;
+      if (aTime == null || bTime == null) return 0;
+      return bTime.compareTo(aTime);
+    });
+
+    print('[FIRESTORE] Found ${allVideos.length} uploaded videos');
+    return allVideos;
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[month - 1];
+  }
+
+  /// Delete a video for a specific day and recalculate the streak.
+  Future<void> deleteVideoForDay({
+    required String weekId,
+    required int dayIndex,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      print('[FIRESTORE] No user to delete video for');
+      return;
+    }
+
+    final uid = user.uid;
+    print(
+      '[FIRESTORE] Deleting video for weekId: $weekId, dayIndex: $dayIndex',
+    );
+
+    final docRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('weeks')
+        .doc(weekId)
+        .collection('videos')
+        .doc('day$dayIndex');
+
+    // Delete the video document
+    await docRef.delete();
+    print('[FIRESTORE] Video deleted for day$dayIndex');
+
+    // Also delete from Firebase Storage if there's a storagePath
+    // (You may want to add storage deletion logic here if needed)
+
+    // Recalculate and update the streak
+    print('[FIRESTORE] Recalculating streak after deletion...');
+    await updateUserStreak();
+    print('[FIRESTORE] Streak recalculated after deletion');
   }
 }

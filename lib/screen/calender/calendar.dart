@@ -1,9 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:thort_jivit/services/firestore_service.dart';
-import 'package:thort_jivit/services/video_duration.dart' as video_duration;
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -19,10 +17,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _displayed = DateTime.now();
   Map<int, String> _recordedDays = {};
   bool _isSelectedAllowed = false;
+  int _currentStreak = 0;
+
   @override
   void initState() {
     super.initState();
     _loadRecordedDays();
+    _loadStreak();
   }
 
   Future<void> _loadRecordedDays() async {
@@ -33,6 +34,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
     setState(() {
       _recordedDays = data;
+    });
+  }
+
+  Future<void> _loadStreak() async {
+    // Recalculate the streak to ensure it's accurate
+    await _firestoreService.updateUserStreak();
+    final streak = await _firestoreService.getUserStreak();
+    setState(() {
+      _currentStreak = streak;
     });
   }
 
@@ -49,11 +59,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
               const SizedBox(height: 12),
               _buildCalendarGrid(),
               const SizedBox(height: 24),
+              _buildStreakCard(),
+              const SizedBox(height: 12),
               _buildAddRecordingButton(),
-              const SizedBox(height: 12),
-              _buildActionButtons(),
-              const SizedBox(height: 12),
-              _buildMonthlySummaryCard(),
               const SizedBox(height: 12),
             ],
           ),
@@ -135,6 +143,75 @@ class _CalendarScreenState extends State<CalendarScreen> {
       'December',
     ];
     return names[m - 1];
+  }
+
+  Widget _buildStreakCard() {
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.local_fire_department,
+                color: Color(0xFFFF8C42),
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Current Streak',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.black54,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$_currentStreak day${_currentStreak == 1 ? "" : "s"}',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF00A981),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF8C42).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text(
+              '🔥 Keep it up!',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFFF8C42),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildCalendarGrid() {
@@ -335,19 +412,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton.icon(
-                      onPressed: isUploading
-                          ? null
-                          : () async {
-                        final result = await FilePicker.platform.pickFiles(
-                          type: FileType.video,
-                          withData: true,
-                        );
-                        if (result != null && result.files.isNotEmpty) {
-                          setState(() {
-                            pickedFile = result.files.first;
-                          });
-                        }
-                      },
+                      onPressed:
+                          isUploading
+                              ? null
+                              : () async {
+                                final result = await FilePicker.platform
+                                    .pickFiles(
+                                      type: FileType.video,
+                                      // On web we need bytes because path is null
+                                      withData: true,
+                                    );
+                                if (result != null && result.files.isNotEmpty) {
+                                  setState(() {
+                                    pickedFile = result.files.first;
+                                  });
+                                }
+                              },
                       icon: const Icon(Icons.attach_file),
                       label: const Text('Pick Video File'),
                     ),
@@ -375,7 +455,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 style: const TextStyle(fontSize: 18),
                               ),
                               selected: isSel,
-                              onSelected: isUploading ? null : (_) => setState(() => selectedEmoji = e),
+                              onSelected:
+                                  isUploading
+                                      ? null
+                                      : (_) =>
+                                          setState(() => selectedEmoji = e),
                             );
                           }).toList(),
                     ),
@@ -383,100 +467,121 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: (pickedFile == null || isUploading)
-                            ? null
-                            : () async {
-                                // Validate video duration between 10-30 seconds
-                                Duration? dur;
-                                if (pickedFile!.bytes != null) {
-                                  final bytes = pickedFile!.bytes!.toList();
-                                  dur = await video_duration.getVideoDuration(
-                                    bytes: bytes,
-                                    filename: pickedFile!.name,
-                                  );
-                                } else if (pickedFile!.path != null) {
-                                  // pass filename when available to help MIME detection
-                                  final name = pickedFile!.name;
-                                  dur = await video_duration.getVideoDuration(
-                                    filePath: pickedFile!.path,
-                                    filename: name,
-                                  );
-                                }
-
-                                if (dur == null) {
-                                  // Helpful debug info for web: log file info and reason hints
-                                  if (pickedFile!.bytes == null) {
-                                    debugPrint('Picked file has no bytes: ${pickedFile!.name}');
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Could not read file bytes from picker. Try again or use a smaller file.',
-                                        ),
-                                      ),
+                        onPressed:
+                            (pickedFile == null || isUploading)
+                                ? null
+                                : () async {
+                                  // Skip duration validation for now to allow uploads on web even when
+                                  // the browser cannot read metadata (e.g. DEMUXER_ERROR/unsupported codec).
+                                  // Keep the code structure so we can re-enable later if needed.
+                                  /*
+                                  Duration? dur;
+                                  if (pickedFile!.bytes != null) {
+                                    final bytes = pickedFile!.bytes!.toList();
+                                    dur = await video_duration.getVideoDuration(
+                                      bytes: bytes,
+                                      filename: pickedFile!.name,
                                     );
-                                  } else {
-                                    debugPrint('Could not load metadata for file: ${pickedFile!.name} (size=${pickedFile!.size})');
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Could not determine video duration. Browser may not support the file codec/container.',
-                                        ),
-                                      ),
+                                  } else if (pickedFile!.path != null) {
+                                    // pass filename when available to help MIME detection
+                                    final name = pickedFile!.name;
+                                    dur = await video_duration.getVideoDuration(
+                                      filePath: pickedFile!.path,
+                                      filename: name,
                                     );
                                   }
-                                  return;
-                                }
 
-                                final secs = dur.inSeconds;
-                                if (secs < 10 || secs > 30) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'Video length must be between 10 and 30 seconds. Selected: ${secs}s',
+                                  if (dur == null) {
+                                    // Helpful debug info for web: log file info and reason hints
+                                    if (pickedFile!.bytes == null) {
+                                      debugPrint(
+                                        'Picked file has no bytes: ${pickedFile!.name}',
+                                      );
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Could not read file bytes from picker. Try again or use a smaller file.',
+                                          ),
+                                        ),
+                                      );
+                                    } else {
+                                      debugPrint(
+                                        'Could not load metadata for file: ${pickedFile!.name} (size=${pickedFile!.size})',
+                                      );
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Could not determine video duration. Browser may not support the file codec/container.',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return;
+                                  }
+
+                                  final secs = dur.inSeconds;
+                                  if (secs < 10 || secs > 30) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Video length must be between 10 and 30 seconds. Selected: ${secs}s',
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                  return;
-                                }
+                                    );
+                                    return;
+                                  }
+                                  */
 
-                                // Start uploading while keeping the sheet open
-                                setState(() {
-                                  isUploading = true;
-                                });
+                                  // Start uploading while keeping the sheet open
+                                  setState(() {
+                                    isUploading = true;
+                                  });
 
-                                try {
-                                  await _submitMissingRecord(
-                                    pickedFile!,
-                                    selectedEmoji,
-                                    textNote,
-                                  );
-
-                                  // show success
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Upload successful')),
-                                  );
-
-                                  // close sheet after success
-                                  Navigator.of(context).pop();
-                                } catch (e) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Upload failed: $e')));
-                                } finally {
-                                  // ensure we reset uploading flag if sheet still open
                                   try {
-                                    setState(() {
-                                      isUploading = false;
-                                    });
-                                  } catch (_) {}
-                                }
-                              },
-                        child: isUploading
-                            ? const SizedBox(
-                                height: 18,
-                                width: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Submit Record'),
+                                    await _submitMissingRecord(
+                                      pickedFile!,
+                                      selectedEmoji,
+                                      textNote,
+                                    );
+
+                                    // show success
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Upload successful'),
+                                      ),
+                                    );
+
+                                    // close sheet after success
+                                    Navigator.of(context).pop();
+                                  } catch (e) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Upload failed: $e'),
+                                      ),
+                                    );
+                                  } finally {
+                                    // ensure we reset uploading flag if sheet still open
+                                    try {
+                                      setState(() {
+                                        isUploading = false;
+                                      });
+                                    } catch (_) {}
+                                  }
+                                },
+                        child:
+                            isUploading
+                                ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                                : const Text('Submit Record'),
                       ),
                     ),
                   ],
@@ -500,9 +605,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     try {
       // Prepare parameters for the platform-aware uploader.
-      final String? filePath = pickedFile.path;
-      final bytes = pickedFile.bytes;
+      // CRITICAL: On web, accessing pickedFile.path throws an error!
+      // Only access .path on non-web platforms.
+      final String? filePath = kIsWeb ? null : pickedFile.path;
       final filename = pickedFile.name;
+      final fileBytes = pickedFile.bytes; // Uint8List? on web
+
+      print('=== UPLOAD START ===');
+      print('Platform: ${kIsWeb ? "WEB" : "NATIVE"}');
+      print('Filename: $filename');
+      print('Bytes length: ${fileBytes?.length ?? 0}');
+      print('FilePath: ${kIsWeb ? "N/A (web)" : (filePath ?? "null")}');
+
+      // On web, bytes are required since path doesn't exist
+      if (kIsWeb && fileBytes == null) {
+        print('ERROR: Web platform but bytes are null');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'File bytes missing. Please pick the file again with a smaller file size.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      if (!kIsWeb && filePath == null) {
+        print('ERROR: Native platform but path is null');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('File path missing. Please pick the file again.'),
+          ),
+        );
+        return;
+      }
 
       // For the initial test, hardcode dayIndex as 1, and use a default weekId like 'week_1'.
       final DateTime selectedDate = DateTime(
@@ -524,15 +660,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final DateTime weekStart = weekInfo['startDate'] as DateTime;
       final int dayIndex = selectedDate.difference(weekStart).inDays + 1;
 
+      print('Week ID: $weekId, Day Index: $dayIndex');
+      print('Starting upload to Firestore/Storage...');
+
       final downloadUrl = await _firestoreService.uploadVideoAndMetadata(
         filePath: filePath,
-        bytes: bytes,
+        bytes: fileBytes,
         filename: filename,
         dayIndex: dayIndex,
         emoji: emoji,
         textNote: textNote,
         weekId: weekId,
         timestamp: selectedDate,
+      );
+
+      print(
+        'Upload completed. Download URL: ${downloadUrl.isNotEmpty ? "SUCCESS" : "FAILED"}',
       );
 
       // On success, reflect the emoji on the calendar by updating local state
@@ -556,101 +699,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
           context,
         ).showSnackBar(const SnackBar(content: Text('Record uploaded')));
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('=== UPLOAD ERROR ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
     } finally {
+      print('=== UPLOAD END ===');
       setState(() {
         _isSubmitting = false;
       });
     }
-  }
-
-  Widget _buildActionButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.video_library_outlined),
-            label: const Text('All Videos'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              foregroundColor: const Color(0xFF00A981),
-              side: BorderSide(color: const Color(0xFF00A981)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.dashboard_outlined),
-            label: const Text('Dashboard'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              foregroundColor: const Color(0xFF00A981),
-              side: BorderSide(color: const Color(0xFF00A981)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMonthlySummaryCard() {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'This Month',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildSummaryItem('9', 'Clips'),
-              _buildSummaryItem('8:32', 'Total Time'),
-              _buildSummaryItem('29%', 'Coverage'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryItem(String value, String label) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF00A981),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
-      ],
-    );
   }
 }
