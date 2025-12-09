@@ -6,6 +6,7 @@ import 'package:thort_jivit/services/music_service.dart';
 import 'package:thort_jivit/screen/videos/video_player_screen.dart';
 import 'package:thort_jivit/services/admin_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 
 class VideosScreen extends StatefulWidget {
   const VideosScreen({Key? key}) : super(key: key);
@@ -60,9 +61,23 @@ class _VideosScreenState extends State<VideosScreen>
       bool canCreate = false;
       if (activeWeek != null) {
         final weekId = activeWeek['weekId'] as String;
-        final hasEnoughVideos = _videoCombiner.canCreateRecap(
-          videos.where((v) => v['weekId'] == weekId).length,
+        final weekVideos = videos.where((v) => v['weekId'] == weekId).toList();
+        final videoCount = weekVideos.length;
+        final hasEnoughVideos = _videoCombiner.canCreateRecap(videoCount);
+
+        print('[VIDEOS] Active week: $weekId');
+        print('[VIDEOS] Total videos loaded: ${videos.length}');
+        print('[VIDEOS] Videos for current week: $videoCount');
+        print(
+          '[VIDEOS] Week videos IDs: ${weekVideos.map((v) => v['dayId']).toList()}',
         );
+        print(
+          '[VIDEOS] Week videos emojis: ${weekVideos.map((v) => v['emoji']).toList()}',
+        );
+        print(
+          '[VIDEOS] Week videos status: ${weekVideos.map((v) => '${v['dayId']}-uploaded').toList()}',
+        );
+        print('[VIDEOS] Has enough for recap (need 3): $hasEnoughVideos');
 
         // For admin, always allow creating recap
         if (isAdmin) {
@@ -156,6 +171,23 @@ class _VideosScreenState extends State<VideosScreen>
       // Get all daily videos for this week
       final weekVideos =
           dailyVideos.where((v) => v['weekId'] == weekId).toList();
+
+      print('[VIDEOS] DEBUG: Total dailyVideos: ${dailyVideos.length}');
+      print('[VIDEOS] DEBUG: ActiveWeekId: $weekId');
+      print('[VIDEOS] DEBUG: WeekVideos filtered: ${weekVideos.length}');
+      print(
+        '[VIDEOS] DEBUG: WeekVideos IDs: ${weekVideos.map((v) => v['id']).toList()}',
+      );
+      print(
+        '[VIDEOS] DEBUG: WeekVideos dayIndexes: ${weekVideos.map((v) => v['dayIndex']).toList()}',
+      );
+      print(
+        '[VIDEOS] DEBUG: WeekVideos types: ${weekVideos.map((v) => v['videoType']).toList()}',
+      );
+      print(
+        '[VIDEOS] DEBUG: WeekVideos URLs: ${weekVideos.map((v) => v['storageDownloadUrl']).toList()}',
+      );
+
       final videoUrls =
           weekVideos.map((v) => v['storageDownloadUrl'] as String).toList();
       final videoPaths =
@@ -163,6 +195,10 @@ class _VideosScreenState extends State<VideosScreen>
               .map((v) => v['filePath'] as String? ?? '')
               .where((p) => p.isNotEmpty)
               .toList();
+
+      print('[VIDEOS] DEBUG: Final videoUrls count: ${videoUrls.length}');
+      print('[VIDEOS] DEBUG: Final videoPaths count: ${videoPaths.length}');
+      print('[VIDEOS] DEBUG: Final videoUrls: $videoUrls');
 
       // Combine all videos for the week
       final result = await _videoCombiner.combineVideos(
@@ -442,7 +478,11 @@ class _VideosScreenState extends State<VideosScreen>
                       ),
                     )
                     : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.only(
+                        left: 20,
+                        right: 20,
+                        bottom: 100,
+                      ),
                       itemCount: currentVideos.length,
                       itemBuilder: (context, index) {
                         final video = currentVideos[index];
@@ -928,9 +968,7 @@ class _VideosScreenState extends State<VideosScreen>
                           icon: Icons.share_outlined,
                           label: 'Share',
                           color: const Color(0xFF009688),
-                          onTap: () {
-                            // Handle share
-                          },
+                          onTap: () => _shareRecap(compilation),
                         ),
 
                         const SizedBox(width: 12),
@@ -1312,6 +1350,108 @@ class _VideosScreenState extends State<VideosScreen>
             'Failed to open recap. If this is your first run after adding url_launcher, fully restart the app. Error: $e',
           ),
           backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _shareRecap(Map<String, dynamic> compilation) async {
+    final recapUrl = (compilation['recapUrl'] as String?) ?? '';
+
+    if (recapUrl.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No recap URL available to share.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      if (kIsWeb) {
+        // On web: show dialog with share options
+        if (!mounted) return;
+        await showDialog(
+          context: context,
+          builder:
+              (context) => AlertDialog(
+                title: const Text('Share Recap'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Instagram direct sharing is not available on web. You can:',
+                    ),
+                    const SizedBox(height: 16),
+                    ListTile(
+                      leading: const Icon(Icons.link, color: Color(0xFF009688)),
+                      title: const Text('Copy Link'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _copyRecapLink(recapUrl);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.download,
+                        color: Color(0xFF009688),
+                      ),
+                      title: const Text('Download & Share Manually'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _saveRecap(compilation);
+                      },
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                ],
+              ),
+        );
+      } else {
+        // On mobile: use share sheet (will show Instagram if installed)
+        final result = await Share.shareUri(
+          Uri.parse(recapUrl),
+          sharePositionOrigin: Rect.fromLTWH(0, 0, 10, 10),
+        );
+
+        if (!mounted) return;
+        if (result.status == ShareResultStatus.success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Shared successfully!'),
+              backgroundColor: Color(0xFF009688),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to share: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _copyRecapLink(String url) {
+    // For web, we can use Share.share with text
+    Share.share('Check out my weekly recap: $url', subject: 'Weekly Recap');
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Share dialog opened!'),
+          backgroundColor: Color(0xFF009688),
+          duration: Duration(seconds: 2),
         ),
       );
     }

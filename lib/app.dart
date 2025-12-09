@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:thort_jivit/screen/music/MusicScreen.dart';
 import 'package:thort_jivit/screen/auth/SignInScreen.dart';
 import 'package:thort_jivit/screen/auth/SignUpScreen.dart';
-import 'package:thort_jivit/screen/home/HomePage.dart';
+// HomePage is no longer imported here as it's used inside MainNavigation
+// import 'package:thort_jivit/screen/home/HomePage.dart';
 
-import 'package:thort_jivit/screen/welcome.dart'; // Ensure correct path
+import 'package:thort_jivit/screen/welcome.dart';
+import 'package:thort_jivit/main_navigation.dart'; // <<< ADDED IMPORT
 
 import 'package:thort_jivit/theme.dart';
 
@@ -25,16 +28,16 @@ class App extends StatelessWidget {
           primary: primaryBrandGreen,
         ),
         // Define text theme for consistency
-        textTheme: const TextTheme(
+        textTheme: TextTheme(
           // For the main app title on the welcome screen
-          headlineLarge: TextStyle(
+          headlineLarge: const TextStyle(
             color: primaryBrandGreen,
             fontWeight: FontWeight.w900,
             fontSize: 32,
             letterSpacing: 2.0,
           ),
           // For the body text descriptions
-          bodyMedium: TextStyle(
+          bodyMedium: const TextStyle(
             color: Color(0xFF666666), // Darker grey for readability
             height: 1.5,
           ),
@@ -55,7 +58,19 @@ class App extends StatelessWidget {
           ),
         ),
       ),
-      home: const SignInScreen(),
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          // If user is logged in, show the MainNavigation
+          if (snapshot.connectionState == ConnectionState.active) {
+            if (snapshot.data != null) {
+              return const MainNavigation(); // <<< CHANGED TO MainNavigation
+            }
+          }
+          // Otherwise show sign in screen
+          return const SignInScreen();
+        },
+      ),
     );
   }
 }

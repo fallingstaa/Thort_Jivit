@@ -23,12 +23,15 @@ class _HomePageState extends State<HomePage> {
 
   int _currentStreak = 0;
   List<Map<String, dynamic>> _weekDays = [];
+  bool _canRecordToday = true;
+  bool _isCheckingRecord = true;
 
   @override
   void initState() {
     super.initState();
     _loadStreak();
     _loadWeekData();
+    _checkCanRecord();
   }
 
   Future<void> _loadStreak() async {
@@ -45,6 +48,14 @@ class _HomePageState extends State<HomePage> {
         _weekDays = List<Map<String, dynamic>>.from(weekData['days'] ?? []);
       });
     }
+  }
+
+  Future<void> _checkCanRecord() async {
+    final canRecord = await _firestoreService.canRecordToday();
+    setState(() {
+      _canRecordToday = canRecord;
+      _isCheckingRecord = false;
+    });
   }
 
   // Get username - with fallback options
@@ -300,7 +311,22 @@ class _HomePageState extends State<HomePage> {
                       ),
                       InkWell(
                         onTap: () {
-                          Navigator.pushReplacement(
+                          // Switch to calendar tab (index 1) in MainNavigation
+                          final mainNavState =
+                              context
+                                  .findAncestorStateOfType<
+                                    State<StatefulWidget>
+                                  >();
+                          if (mainNavState != null && mainNavState.mounted) {
+                            // Try to find MainNavigation and call its tab switch
+                            Navigator.of(
+                              context,
+                            ).popUntil((route) => route.isFirst);
+                            // This will go back to MainNavigation, then we need to switch tab
+                            // Better approach: use a callback or state management
+                            // For now, just push to calendar with bottom nav
+                          }
+                          Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => const CalendarScreen(),
@@ -336,45 +362,91 @@ class _HomePageState extends State<HomePage> {
 
             // Record Button
             Center(
-              child: InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => RecordScreen()),
-                  );
-                },
-                child: Column(
-                  children: [
-                    Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFF008060),
-                          width: 8,
-                        ),
-                      ),
-                      child: Container(
-                        margin: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color(0xFF008060),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Record Now',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
+              child:
+                  _isCheckingRecord
+                      ? const CircularProgressIndicator(
                         color: Color(0xFF008060),
+                      )
+                      : InkWell(
+                        onTap:
+                            _canRecordToday
+                                ? () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => RecordScreen(),
+                                    ),
+                                  ).then((_) {
+                                    // Refresh when coming back
+                                    _checkCanRecord();
+                                    _loadWeekData();
+                                  });
+                                }
+                                : () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Text(
+                                        'You have already recorded today! Come back tomorrow.',
+                                      ),
+                                      backgroundColor: Colors.orange,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  );
+                                },
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color:
+                                      _canRecordToday
+                                          ? const Color(0xFF008060)
+                                          : Colors.grey,
+                                  width: 8,
+                                ),
+                              ),
+                              child: Container(
+                                margin: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color:
+                                      _canRecordToday
+                                          ? const Color(0xFF008060)
+                                          : Colors.grey,
+                                ),
+                                child:
+                                    _canRecordToday
+                                        ? null
+                                        : const Icon(
+                                          Icons.check,
+                                          color: Colors.white,
+                                          size: 36,
+                                        ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _canRecordToday
+                                  ? 'Record Now'
+                                  : 'Already Recorded',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                                color:
+                                    _canRecordToday
+                                        ? const Color(0xFF008060)
+                                        : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
             ),
 
             const SizedBox(height: 40),

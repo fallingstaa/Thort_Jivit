@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:thort_jivit/screen/profile/profile.dart';
 import 'package:thort_jivit/screen/videos/videos_screen.dart';
-import 'screen/home/HomePage.dart';
-import 'screen/calender/calendar.dart';
-
-
+import 'package:thort_jivit/screen/home/HomePage.dart'; // <<< ADJUSTED IMPORT PATH
+import 'package:thort_jivit/screen/calender/calendar.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({Key? key}) : super(key: key);
@@ -16,12 +14,15 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
 
-  // List of screens for each tab
+  // List of screens for each tab - using PageStorageKey to preserve state
   late final List<Widget> _screens = [
-    const HomePage(showBottomNav: false),
-    const CalendarScreen(),
-    const VideosScreen(),
-    const ProfilePage(),
+    PageStorage(
+      bucket: PageStorageBucket(),
+      child: const HomePage(showBottomNav: false),
+    ),
+    PageStorage(bucket: PageStorageBucket(), child: const CalendarScreen()),
+    PageStorage(bucket: PageStorageBucket(), child: const VideosScreen()),
+    PageStorage(bucket: PageStorageBucket(), child: const ProfilePage()),
   ];
 
   void _onTabTapped(int index) {
@@ -33,7 +34,8 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_currentIndex],
+      resizeToAvoidBottomInset: false,
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         selectedItemColor: const Color(0xFF5D9F6A),

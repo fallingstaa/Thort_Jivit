@@ -26,13 +26,24 @@ class VideoCombinerService {
         };
       }
 
+      // If we have 3+ local paths, we can merge locally; otherwise fall back to cloud function
       if (kIsWeb) {
         // Web: Call Cloud Function to merge videos with FFmpeg
         return await _mergeVideosViaCloudFunction(videoUrls);
-      } else {
-        // Mobile/Desktop: Use local FFmpeg to merge videos
+      }
+
+      if (videoPaths.length >= 3) {
+        print(
+          '[VIDEO_COMBINER] Using local FFmpeg with ${videoPaths.length} file paths',
+        );
         return await _mergeVideosLocally(videoPaths);
       }
+
+      // Mobile/Desktop but missing local files: use cloud function with URLs
+      print(
+        '[VIDEO_COMBINER] No local file paths available, falling back to Cloud Function with URLs',
+      );
+      return await _mergeVideosViaCloudFunction(videoUrls);
     } catch (e) {
       print('[VIDEO_COMBINER] Error combining videos: $e');
       return {'success': false, 'message': 'Error creating recap: $e'};
@@ -49,11 +60,13 @@ class VideoCombinerService {
         throw Exception('User not signed in');
       }
 
-      // Use the mergeVideos function (Gen 1)
+      // Use the mergeVideosV3 function (Gen 1) with concat filter
       final functionUrl =
-          'https://us-central1-thort-jivit.cloudfunctions.net/mergeVideos';
+          'https://us-central1-thort-jivit.cloudfunctions.net/mergeVideosV3';
 
       print('[VIDEO_COMBINER] Calling Cloud Function: $functionUrl');
+      print('[VIDEO_COMBINER] VideoUrls count: ${videoUrls.length}');
+      print('[VIDEO_COMBINER] VideoUrls: $videoUrls');
 
       final response = await http
           .post(
@@ -162,21 +175,13 @@ class VideoCombinerService {
     return videoCount >= 3;
   }
 
-  /// Replace the music track on an existing recap video (web via Cloud Function)
+  /// Replace the music track on an existing recap video (Cloud Function for both web and mobile)
   Future<Map<String, dynamic>> changeRecapMusic({
     required String recapUrl,
     required String weekId,
     required String musicFileName,
   }) async {
     try {
-      if (!kIsWeb) {
-        // Placeholder: mobile/desktop path can be added later
-        return {
-          'success': false,
-          'message': 'Changing recap music is only supported on web for now',
-        };
-      }
-
       final user = _auth.currentUser;
       if (user == null) throw Exception('User not signed in');
 

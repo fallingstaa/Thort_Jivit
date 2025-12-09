@@ -47,22 +47,37 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
-      appBar: _buildAppBar(),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+    return Material(
+      color: Colors.transparent,
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          color: const Color(0xFFF0F4F8),
           child: Column(
             children: [
-              _buildMonthSelector(),
-              const SizedBox(height: 12),
-              _buildCalendarGrid(),
-              const SizedBox(height: 24),
-              _buildStreakCard(),
-              const SizedBox(height: 12),
-              _buildAddRecordingButton(),
-              const SizedBox(height: 12),
+              _buildAppBarWidget(),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 12.0,
+                    ),
+                    child: Column(
+                      children: [
+                        _buildMonthSelector(),
+                        const SizedBox(height: 12),
+                        _buildCalendarGrid(),
+                        const SizedBox(height: 24),
+                        _buildStreakCard(),
+                        const SizedBox(height: 12),
+                        _buildAddRecordingButton(),
+                        const SizedBox(height: 80),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -70,15 +85,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 1,
-      centerTitle: true,
-      automaticallyImplyLeading: false,
-      title: const Text(
-        'Calendar',
-        style: TextStyle(color: Color(0xFF00A981), fontWeight: FontWeight.bold),
+  Widget _buildAppBarWidget() {
+    return Container(
+      color: Colors.white,
+      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 56,
+            child: Center(
+              child: Text(
+                'Calendar',
+                style: TextStyle(
+                  color: Color(0xFF00A981),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ),
+          Container(color: Colors.grey[300], height: 1),
+        ],
       ),
     );
   }

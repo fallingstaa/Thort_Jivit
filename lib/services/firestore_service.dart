@@ -43,7 +43,9 @@ class FirestoreService {
 
     // Use platform-aware uploader (putFile on IO, putData on web)
     String? downloadUrl;
-    final docRef = _firestore
+
+    // Check if there's already a video for this day
+    final existingDocRef = _firestore
         .collection('users')
         .doc(uid)
         .collection('weeks')
@@ -51,11 +53,28 @@ class FirestoreService {
         .collection('videos')
         .doc('day$dayIndex');
 
+    final existingDoc = await existingDocRef.get();
+
+    // If a video already exists, use a suffixed ID to avoid overwriting
+    final docRef =
+        existingDoc.exists
+            ? _firestore
+                .collection('users')
+                .doc(uid)
+                .collection('weeks')
+                .doc(weekId)
+                .collection('videos')
+                .doc(
+                  'day${dayIndex}_upload_${DateTime.now().millisecondsSinceEpoch}',
+                )
+            : existingDocRef;
+
     final dataToSet = {
       'emoji': emoji,
       'textNote': textNote,
       'uploadedAt': FieldValue.serverTimestamp(),
       'dayIndex': dayIndex,
+      'videoType': 'upload', // Mark as uploaded from calendar
     };
     if (timestamp != null) {
       dataToSet['timestamp'] = Timestamp.fromDate(timestamp);
@@ -354,6 +373,170 @@ class FirestoreService {
     return null;
   }
 
+  /// Check if user can record for today (only one recording per day allowed)
+  Future<bool> canRecordToday() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // Check if there's already a recorded video for today
+    final week = await _getWeekContainingDate(today);
+    if (week == null) {
+      // No week exists, can start a new week by recording
+      return true;
+    }
+
+    final weekId = week['weekId'] as String;
+    final DateTime start = week['startDate'] as DateTime;
+    final diff = today.difference(start).inDays;
+
+    if (diff < 0 || diff >= 7) return false;
+
+    final uid = user.uid;
+
+    // Check if a recording already exists for today
+    final docRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('weeks')
+        .doc(weekId)
+        .collection('videos')
+        .doc('day${diff + 1}');
+
+    final docSnap = await docRef.get();
+    if (!docSnap.exists) return true;
+
+    final data = docSnap.data();
+    // Allow recording if no video exists or if it's an upload (not a recording)
+    return data == null ||
+        data['storageDownloadUrl'] == null ||
+        data['videoType'] != 'recorded';
+  }
+
+  /// Save a recorded video with metadata (can only record once per day, for today only)
+  Future<String> saveRecordedVideo({
+    String? filePath,
+    Uint8List? bytes,
+    String? filename,
+    required String emoji,
+    required String textNote,
+    DateTime? timestamp,
+  }) async {
+    print('[FIRESTORE] Recording save started');
+
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('User not signed in');
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final uid = user.uid;
+
+    // Check if can record today
+    final canRecord = await canRecordToday();
+    if (!canRecord) {
+      throw Exception('Cannot record: already recorded today or invalid date');
+    }
+
+    // Get or create week for today
+    var week = await _getWeekContainingDate(today);
+    String weekId;
+    DateTime startDate;
+
+    if (week == null) {
+      // Create new week starting today
+      weekId = await createWeek(today);
+      startDate = today;
+    } else {
+      weekId = week['weekId'] as String;
+      startDate = week['startDate'] as DateTime;
+    }
+
+    final diff = today.difference(startDate).inDays;
+    final dayIndex = diff + 1;
+
+    print('[FIRESTORE] Recording for weekId: $weekId, dayIndex: $dayIndex');
+
+    final safeName = filename ?? '${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final storagePath =
+        'users/$uid/weeks/$weekId/videos/day$dayIndex/$safeName';
+
+    if (bytes == null && filePath == null) {
+      throw Exception('No file data provided');
+    }
+
+    // Check if there's already a video for this day
+    final existingDocRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('weeks')
+        .doc(weekId)
+        .collection('videos')
+        .doc('day$dayIndex');
+
+    final existingDoc = await existingDocRef.get();
+
+    // If a video already exists, use a suffixed ID to avoid overwriting
+    final docRef =
+        existingDoc.exists
+            ? _firestore
+                .collection('users')
+                .doc(uid)
+                .collection('weeks')
+                .doc(weekId)
+                .collection('videos')
+                .doc(
+                  'day${dayIndex}_recorded_${DateTime.now().millisecondsSinceEpoch}',
+                )
+            : existingDocRef;
+
+    final dataToSet = {
+      'emoji': emoji,
+      'textNote': textNote,
+      'uploadedAt': FieldValue.serverTimestamp(),
+      'dayIndex': dayIndex,
+      'videoType': 'recorded', // Mark as recorded (vs uploaded)
+    };
+
+    if (timestamp != null) {
+      dataToSet['timestamp'] = Timestamp.fromDate(timestamp);
+    }
+
+    String? downloadUrl;
+    try {
+      print('[FIRESTORE] Uploading recorded video to storage...');
+      downloadUrl = await uploadToStorage(
+        filePath: filePath,
+        bytes: bytes,
+        storagePath: storagePath,
+        contentType: 'video/mp4',
+        filename: safeName,
+      );
+      print('[FIRESTORE] Recording upload successful');
+      dataToSet['storageDownloadUrl'] = downloadUrl;
+      dataToSet['storagePath'] = storagePath;
+      dataToSet['status'] = 'uploaded';
+    } catch (e) {
+      print('[FIRESTORE] Recording upload error: $e');
+      dataToSet['storagePath'] = storagePath;
+      dataToSet['status'] = 'upload_failed';
+      dataToSet['uploadError'] = e.toString();
+    }
+
+    print('[FIRESTORE] Writing recorded video metadata to Firestore...');
+    await docRef.set(dataToSet, SetOptions(merge: true));
+    print('[FIRESTORE] Recording metadata saved.');
+
+    // Update user streak
+    print('[FIRESTORE] Recalculating user streak...');
+    await updateUserStreak();
+
+    return downloadUrl ?? '';
+  }
+
   /// Whether the user may upload for the given [date]. Rules:
   /// - If a week exists that contains [date], uploads allowed only if date in [start, start+2]
   ///   AND current time is within the active week (start..start+6).
@@ -551,12 +734,24 @@ class FirestoreService {
 
       final videosCol = weeksCol.doc(weekId).collection('videos');
       final videosSnapshot = await videosCol.get();
+      print(
+        '[FIRESTORE] Week $weekId has ${videosSnapshot.docs.length} video docs',
+      );
 
       for (final videoDoc in videosSnapshot.docs) {
         final data = videoDoc.data();
+        final status = data['status'];
+        final videoType =
+            data['videoType'] ??
+            'unknown'; // Handle old videos without videoType
+        final hasUrl = data['storageDownloadUrl'] != null;
+        final dayIndex = data['dayIndex'];
+        print(
+          '[FIRESTORE] Video ${videoDoc.id}: dayIndex=$dayIndex, type="$videoType", status="$status", hasUrl=$hasUrl',
+        );
 
-        // Only include videos that have been successfully uploaded
-        if (data['status'] == 'uploaded' &&
+        // Include both uploaded AND recorded videos that have been successfully saved
+        if ((data['status'] == 'uploaded' || data['status'] == 'recorded') &&
             data['storageDownloadUrl'] != null &&
             (data['storageDownloadUrl'] as String).isNotEmpty) {
           final dayIndex = data['dayIndex'] as int?;
@@ -574,6 +769,8 @@ class FirestoreService {
             'id': '${weekId}_${videoDoc.id}',
             'weekId': weekId,
             'dayId': videoDoc.id,
+            'dayIndex': dayIndex,
+            'videoType': videoType,
             'emoji': data['emoji'] ?? '',
             'textNote': data['textNote'] ?? '',
             'storageDownloadUrl': data['storageDownloadUrl'],
@@ -588,11 +785,16 @@ class FirestoreService {
             'durationText': durationText,
             'isFavorite': false, // Can be extended later with favorites feature
           });
+          print(
+            '[FIRESTORE] ✓ Added ${videoDoc.id} (type=$videoType, day=$dayIndex) to allVideos list',
+          );
         }
       }
     }
 
-    // Sort by date (newest first)
+    print(
+      '[FIRESTORE] Total videos collected before sort: ${allVideos.length}',
+    );
     allVideos.sort((a, b) {
       final aTime = a['uploadedAt'] as Timestamp?;
       final bTime = b['uploadedAt'] as Timestamp?;
@@ -972,6 +1174,11 @@ class FirestoreService {
     });
 
     print('[FIRESTORE] Found ${recaps.length} weekly recaps');
+    for (int i = 0; i < recaps.length; i++) {
+      print(
+        '[FIRESTORE] Recap $i: versionLabel=${recaps[i]['versionLabel']}, clipsCount=${recaps[i]['clipsCount']}, url=${recaps[i]['recapUrl'].toString().substring(0, 80)}...',
+      );
+    }
     return recaps;
   }
 
