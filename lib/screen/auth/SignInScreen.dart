@@ -5,6 +5,7 @@ import 'ForgotPasswordScreen.dart'; // <-- Forgot password screen
 
 // --- Firebase imports ---
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../main_navigation.dart';
 
 class SignInScreen extends StatefulWidget {
@@ -15,14 +16,24 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
-  bool _isPasswordVisible = false;
-
-  // --- Controllers for email/password ---
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-
-  // --- Firebase Auth instance ---
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  bool _isPasswordVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillEmail();
+  }
+
+  Future<void> _prefillEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastEmail = prefs.getString('lastEmail');
+    if (lastEmail != null && lastEmail.isNotEmpty) {
+      _emailController.text = lastEmail;
+    }
+  }
 
   @override
   void dispose() {
@@ -51,7 +62,6 @@ class _SignInScreenState extends State<SignInScreen> {
                   ],
                 ),
               ),
-              _buildFooter(),
             ],
           ),
         ),
@@ -129,155 +139,93 @@ class _SignInScreenState extends State<SignInScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildTextField(
-            hint: 'your@email.com',
-            icon: Icons.email_outlined,
+          TextField(
             controller: _emailController,
-          ),
-          const SizedBox(height: 16),
-          _buildPasswordHeader(),
-          const SizedBox(height: 8),
-          _buildPasswordField(),
-          const SizedBox(height: 20),
-          _buildSignInButton(),
-          const SizedBox(height: 16),
-          _buildDivider(),
-          const SizedBox(height: 16),
-          _buildSocialLoginButtons(),
-        ],
-      ),
-    );
-  }
-
-  // --- Password row with forgot link ---
-  Widget _buildPasswordHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text(
-          'Password',
-          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54),
-        ),
-        GestureDetector(
-          onTap: () {
-            // Navigate to ForgotPasswordScreen
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const ForgotPasswordScreen(),
+            decoration: InputDecoration(
+              hintText: 'your@email.com',
+              prefixIcon: const Icon(Icons.email_outlined),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey.shade300),
               ),
-            );
-          },
-          child: const Text(
-            'Forgot Password?',
-            style: TextStyle(
-              color: Color(0xFF008060),
-              fontWeight: FontWeight.w600,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTextField({
-    required String hint,
-    required IconData icon,
-    TextEditingController? controller,
-  }) {
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        hintText: hint,
-        prefixIcon: Icon(icon),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPasswordField() {
-    return TextField(
-      controller: _passwordController,
-      obscureText: !_isPasswordVisible,
-      decoration: InputDecoration(
-        hintText: '********',
-        prefixIcon: const Icon(Icons.lock_outline),
-        suffixIcon: IconButton(
-          icon: Icon(
-            _isPasswordVisible
-                ? Icons.visibility_outlined
-                : Icons.visibility_off_outlined,
-          ),
-          onPressed: () {
-            setState(() {
-              _isPasswordVisible = !_isPasswordVisible;
-            });
-          },
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-      ),
-    );
-  }
-
-  // --- Show error dialog ---
-  void _showErrorDialog(String title, String message) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Row(
-              children: [
-                const Icon(
-                  Icons.error_outline,
-                  color: Color(0xFFE53935),
-                  size: 28,
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Password',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black54,
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            content: Text(
-              message,
-              style: const TextStyle(fontSize: 15, color: Color(0xFF424242)),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
+              ),
+              GestureDetector(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const ForgotPasswordScreen(),
+                    ),
+                  );
+                },
                 child: const Text(
-                  'OK',
+                  'Forgot Password?',
                   style: TextStyle(
                     color: Color(0xFF008060),
                     fontWeight: FontWeight.w600,
-                    fontSize: 15,
                   ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _passwordController,
+            obscureText: !_isPasswordVisible,
+            decoration: InputDecoration(
+              hintText: '********',
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _isPasswordVisible
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _isPasswordVisible = !_isPasswordVisible;
+                  });
+                },
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildSignInButton(),
+          const SizedBox(height: 16),
+          _buildDivider(),
+          const SizedBox(height: 16),
+          _buildGuestLoginButton(),
+          const SizedBox(height: 20),
+          _buildSignUpFooter(),
+        ],
+      ),
     );
   }
+
+  // ...existing code...
 
   // --- Validate inputs ---
   bool _validateInputs() {
@@ -316,6 +264,9 @@ class _SignInScreenState extends State<SignInScreen> {
               email: _emailController.text.trim(),
               password: _passwordController.text.trim(),
             );
+            // Remember email for convenience
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('lastEmail', _emailController.text.trim());
             // --- Navigate to MainNavigation on success ---
             if (mounted) {
               Navigator.of(context).pushReplacement(
@@ -366,87 +317,28 @@ class _SignInScreenState extends State<SignInScreen> {
         Expanded(child: Divider(color: Colors.grey.shade300)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Text(
-            'or continue with',
-            style: TextStyle(color: Colors.grey.shade600),
-          ),
+          child: Text('or', style: TextStyle(color: Colors.grey.shade600)),
         ),
         Expanded(child: Divider(color: Colors.grey.shade300)),
       ],
     );
   }
 
-  Widget _buildSocialLoginButtons() {
-    return Column(
-      children: [
-        _buildSocialButton(
-          label: 'Continue with Google',
-          iconAsset: 'assets/images/icons8-google-48.png',
-          onPressed: () {},
-        ),
-        const SizedBox(height: 12),
-        _buildSocialButton(
-          label: 'Continue with Facebook',
-          iconAsset: 'assets/images/icons8-facebook-logo-48.png',
-          onPressed: () {},
-        ),
-        const SizedBox(height: 12),
-        _buildSocialButton(
-          isIconData: true,
-          iconData: Icons.person_outline,
-          label: 'Continue as Guest',
-          onPressed: () {},
-        ),
-        const SizedBox(height: 20),
-        RichText(
-          text: TextSpan(
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-            children: [
-              const TextSpan(text: "Don't have an account? "),
-              TextSpan(
-                text: 'Sign up',
-                style: const TextStyle(
-                  color: Color(0xFF008060),
-                  fontWeight: FontWeight.bold,
-                ),
-                recognizer:
-                    TapGestureRecognizer()
-                      ..onTap = () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const SignUpScreen(),
-                          ),
-                        );
-                      },
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSocialButton({
-    required String label,
-    String? iconAsset,
-    IconData? iconData,
-    bool isIconData = false,
-    required VoidCallback onPressed,
-  }) {
+  // --- Guest login button ---
+  Widget _buildGuestLoginButton() {
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
-        onPressed: onPressed,
-        icon:
-            isIconData
-                ? Icon(iconData, color: Colors.black54)
-                : Image.asset(iconAsset!, height: 20),
-        label: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.w600,
-          ),
+        onPressed: () {
+          // Navigate to MainNavigation as guest
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const MainNavigation()),
+          );
+        },
+        icon: const Icon(Icons.person_outline, color: Colors.black54),
+        label: const Text(
+          'Continue as Guest',
+          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
         ),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -459,23 +351,77 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  Widget _buildFooter() {
+  // --- Sign up footer ---
+  Widget _buildSignUpFooter() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: GestureDetector(
-          onTap: () {
-            // TODO: Add navigation logic to welcome screen
-          },
-          child: const Text(
-            'Back to welcome screen',
-            style: TextStyle(
-              color: Color(0xFF008060),
-              fontWeight: FontWeight.w600,
+      child: RichText(
+        text: TextSpan(
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+          children: [
+            const TextSpan(text: "Don't have an account? "),
+            TextSpan(
+              text: 'Sign up',
+              style: const TextStyle(
+                color: Color(0xFF008060),
+                fontWeight: FontWeight.bold,
+              ),
+              recognizer:
+                  TapGestureRecognizer()
+                    ..onTap = () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const SignUpScreen(),
+                        ),
+                      );
+                    },
             ),
-          ),
+          ],
         ),
       ),
+    );
+  }
+
+  // --- Error dialog ---
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Row(
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Color(0xFFE53935),
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              message,
+              style: const TextStyle(fontSize: 15, color: Color(0xFF424242)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(
+                    color: Color(0xFF008060),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
     );
   }
 }

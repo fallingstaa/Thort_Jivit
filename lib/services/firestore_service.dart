@@ -374,9 +374,13 @@ class FirestoreService {
   }
 
   /// Check if user can record for today (only one recording per day allowed)
+  /// IMPORTANT: Record type can ONLY be recorded on the actual calendar date (today only)
+  /// Cannot record retroactively for past dates
   Future<bool> canRecordToday() async {
     final user = _auth.currentUser;
     if (user == null) return false;
+    // Admin bypass: always allow
+    if (user.email == 'lyya87396@gmail.com') return true;
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -392,27 +396,35 @@ class FirestoreService {
     final DateTime start = week['startDate'] as DateTime;
     final diff = today.difference(start).inDays;
 
+    // Cannot record if today is not in current week (past/future dates)
     if (diff < 0 || diff >= 7) return false;
 
     final uid = user.uid;
 
-    // Check if a recording already exists for today
-    final docRef = _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('weeks')
-        .doc(weekId)
-        .collection('videos')
-        .doc('day${diff + 1}');
+    // Check if a 'recorded' type video already exists for today
+    // Get all videos for today's day index
+    final dayIndex = diff + 1;
+    final videosSnapshot =
+        await _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('weeks')
+            .doc(weekId)
+            .collection('videos')
+            .where('dayIndex', isEqualTo: dayIndex)
+            .get();
 
-    final docSnap = await docRef.get();
-    if (!docSnap.exists) return true;
+    // Check if any of them are 'recorded' type
+    for (final doc in videosSnapshot.docs) {
+      final data = doc.data();
+      if (data['videoType'] == 'recorded') {
+        // Already have a recorded video for today
+        return false;
+      }
+    }
 
-    final data = docSnap.data();
-    // Allow recording if no video exists or if it's an upload (not a recording)
-    return data == null ||
-        data['storageDownloadUrl'] == null ||
-        data['videoType'] != 'recorded';
+    // No recorded video exists for today, allow recording
+    return true;
   }
 
   /// Save a recorded video with metadata (can only record once per day, for today only)
@@ -538,59 +550,324 @@ class FirestoreService {
   }
 
   /// Whether the user may upload for the given [date]. Rules:
-  /// - If a week exists that contains [date], uploads allowed only if date in [start, start+2]
-  ///   AND current time is within the active week (start..start+6).
-  /// - If no week exists for date, allow only if date == today (starting a new week).
+  /// - Can upload for today + next 2 days (3 days total)
+  /// - Maximum 2 uploads per calendar day
+  /// - If user uploaded in advance (e.g., day 6 for days 7-8),
+  ///   they can only upload again after those pre-uploaded days pass
+  /// - Record type cannot be uploaded (must be recorded on actual date)
   Future<bool> canUploadForDate(DateTime date) async {
     final user = _auth.currentUser;
     if (user == null) return false;
+    // Admin bypass: always allow
+    if (user.email == 'lyya87396@gmail.com') return true;
 
-    // Check if user is admin - admins can upload any day (1-7) without restrictions
-    final isAdmin = user.email == 'lyya87396@gmail.com';
-    if (isAdmin) {
-      print('[FIRESTORE] Admin upload allowed - no day restrictions');
-      // For admins, just check if we're in the active week
-      final week = await _getWeekContainingDate(date);
-      if (week != null) {
-        final DateTime start = week['startDate'] as DateTime;
-        final DateTime weekEnd = start.add(const Duration(days: 7));
-        final now = DateTime.now();
-        // Must be within the active week
-        if (now.isBefore(start) || !now.isBefore(weekEnd)) return false;
-
-        final diff = date.difference(start).inDays;
-        // Date must be inside the week range (any day 1-7)
-        return diff >= 0 && diff < 7;
-      }
-      return false;
-    }
-
-    // For normal users: keep original restrictions (today + 2 days = 3 days total)
+    // For normal users: apply all restrictions
     final now = DateTime.now();
     final week = await _getWeekContainingDate(date);
+
     if (week != null) {
+      final weekId = week['weekId'] as String;
       final DateTime start = week['startDate'] as DateTime;
       final DateTime weekEnd = start.add(const Duration(days: 7));
-      // Now must be within the active week (start .. start+6)
+
+      // If the week already has a finalized recap, block all uploads for normal users
+      final locked = await weekLockedForUploads(weekId);
+      if (locked) {
+        print('[FIRESTORE] Upload denied: week $weekId is locked by recap');
+        return false;
+      }
+
+      // Must be within the active week
       if (now.isBefore(start) || !now.isBefore(weekEnd)) return false;
 
       final diff = date.difference(start).inDays; // 0-based
       // Date must be inside the week range
       if (diff < 0 || diff >= 7) return false;
 
-      // Only allow upload for today + next 2 days (3 days total)
-      final localDate = DateTime(date.year, date.month, date.day);
-      final localNow = DateTime(now.year, now.month, now.day);
-      final daysDifference = localDate.difference(localNow).inDays;
+      // Count total uploads in the week
+      final totalWeekUploads = await countUploadedVideosInWeek(weekId);
 
-      // Can only upload for today (0) and next 2 days (1, 2)
-      return daysDifference >= 0 && daysDifference <= 2;
+      // RULE: Maximum 2 uploads per calendar day
+      final uploadCount = await countUploadedVideosForDate(date);
+      if (uploadCount >= 2) {
+        print('[FIRESTORE] Upload denied: already have 2 uploads for $date');
+        return false;
+      }
+
+      final localDate = DateTime(date.year, date.month, date.day);
+      final localToday = DateTime(now.year, now.month, now.day);
+      final isFutureInWeek = localDate.isAfter(localToday);
+      // Determine current and requested day indices (1-based) within the active week
+      final int dayIndexNow = now.difference(start).inDays + 1;
+      final int dayIndexRequested = date.difference(start).inDays + 1;
+
+      // Free quota: first 3 uploads are special ONLY on the first day of the week (dayIndexNow == 1)
+      // Allow today and next 2 days (indices +0, +1, +2). Otherwise (not first day), treat as normal: no future uploads.
+      if (totalWeekUploads < 3) {
+        if (dayIndexNow == 1) {
+          final int diffIdx = dayIndexRequested - dayIndexNow;
+          if (diffIdx >= 0 && diffIdx <= 2) {
+            print(
+              '[FIRESTORE] Upload allowed (free quota on week start) for date: $date',
+            );
+            return true;
+          } else {
+            print(
+              '[FIRESTORE] Upload denied: free quota on week start allows only today + next 2 days',
+            );
+            return false;
+          }
+        } else {
+          // Not first day → free quota does not allow future dates; allow past/today only
+          if (!isFutureInWeek) {
+            print(
+              '[FIRESTORE] Upload allowed (free quota, not first day) for past/today: $date',
+            );
+            return true;
+          }
+          print(
+            '[FIRESTORE] Upload denied: future upload not allowed (not first day of week)',
+          );
+          return false;
+        }
+      }
+
+      // For 4th+ upload, only allow for missed past days within the same week (no future dates)
+      if (isFutureInWeek) {
+        print(
+          '[FIRESTORE] Upload denied: beyond free quota, future day upload not allowed for $date',
+        );
+        return false;
+      }
+
+      print(
+        '[FIRESTORE] Upload allowed (beyond free quota) for past/today date: $date',
+      );
+      return true;
     } else {
-      // allow starting a new week only if date is today
+      // No week exists, allow starting a new week only if date is today
       final localDate = DateTime(date.year, date.month, date.day);
       final localNow = DateTime(now.year, now.month, now.day);
       return localDate == localNow;
     }
+  }
+
+  /// Detailed upload permission with human-readable reason.
+  /// Returns: { 'allowed': bool, 'reason': String }
+  Future<Map<String, dynamic>> getUploadPermission(DateTime date) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      return {'allowed': false, 'reason': 'Please sign in to upload a video.'};
+    }
+    // Admin bypass
+    if (user.email == 'lyya87396@gmail.com') {
+      return {'allowed': true, 'reason': 'Admin: uploads are allowed.'};
+    }
+
+    final now = DateTime.now();
+    final week = await _getWeekContainingDate(date);
+    if (week != null) {
+      final weekId = week['weekId'] as String;
+      final DateTime start = week['startDate'] as DateTime;
+      final DateTime weekEnd = start.add(const Duration(days: 7));
+      if (await weekLockedForUploads(weekId)) {
+        return {
+          'allowed': false,
+          'reason': 'Week locked after recap — uploads resume next week.',
+        };
+      }
+      if (now.isBefore(start) || !now.isBefore(weekEnd)) {
+        return {
+          'allowed': false,
+          'reason': 'Selected date is not within your current active week.',
+        };
+      }
+      final diff = date.difference(start).inDays;
+      if (diff < 0 || diff >= 7) {
+        return {
+          'allowed': false,
+          'reason': 'Selected date is outside the current week.',
+        };
+      }
+      final totalWeekUploads = await countUploadedVideosInWeek(weekId);
+      final perDayCount = await countUploadedVideosForDate(date);
+      if (perDayCount >= 2) {
+        return {
+          'allowed': false,
+          'reason': 'You already have 2 uploads for this day.',
+        };
+      }
+      final localDate = DateTime(date.year, date.month, date.day);
+      final localToday = DateTime(now.year, now.month, now.day);
+      final isFutureInWeek = localDate.isAfter(localToday);
+      final int dayIndexNow = now.difference(start).inDays + 1;
+      final int dayIndexRequested = date.difference(start).inDays + 1;
+      if (totalWeekUploads < 3) {
+        if (dayIndexNow == 1) {
+          final diffIdx = dayIndexRequested - dayIndexNow;
+          if (diffIdx >= 0 && diffIdx <= 2) {
+            return {
+              'allowed': true,
+              'reason':
+                  'Allowed: Free future uploads on week start (today + next 2 days).',
+            };
+          } else {
+            return {
+              'allowed': false,
+              'reason':
+                  'Free future uploads on week start allow only today + next 2 days.',
+            };
+          }
+        } else {
+          if (isFutureInWeek) {
+            return {
+              'allowed': false,
+              'reason':
+                  'Future uploads are only allowed on your first day (today + next 2).',
+            };
+          } else {
+            return {
+              'allowed': true,
+              'reason': 'Allowed: Past/today uploads are permitted.',
+            };
+          }
+        }
+      } else {
+        if (isFutureInWeek) {
+          return {
+            'allowed': false,
+            'reason':
+                'Future uploads not allowed after free quota. Upload for past or today only.',
+          };
+        } else {
+          return {
+            'allowed': true,
+            'reason': 'Allowed: Past/today uploads are permitted.',
+          };
+        }
+      }
+    } else {
+      final localDate = DateTime(date.year, date.month, date.day);
+      final localNow = DateTime(now.year, now.month, now.day);
+      final allowedNew = localDate == localNow;
+      return {
+        'allowed': allowedNew,
+        'reason':
+            allowedNew
+                ? 'Allowed: Starting a new week today.'
+                : 'You can only start a new week on today.',
+      };
+    }
+  }
+
+  /// Count total uploaded videos (type='upload') for the active week by [weekId]
+  Future<int> countUploadedVideosInWeek(String weekId) async {
+    final user = _auth.currentUser;
+    if (user == null) return 0;
+
+    final uid = user.uid;
+    final videosSnapshot =
+        await _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('weeks')
+            .doc(weekId)
+            .collection('videos')
+            .where('videoType', isEqualTo: 'upload')
+            .get();
+
+    return videosSnapshot.size;
+  }
+
+  /// Whether uploads are locked for the week (i.e., recap has been created with a valid URL)
+  Future<bool> weekLockedForUploads(String weekId) async {
+    final user = _auth.currentUser;
+    if (user == null) return true; // if not signed in, treat as locked
+    // Admin bypass: admin may still upload
+    if (user.email == 'lyya87396@gmail.com') return false;
+
+    final uid = user.uid;
+    final weekDoc =
+        await _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('weeks')
+            .doc(weekId)
+            .get();
+
+    if (!weekDoc.exists) return false;
+    final data = weekDoc.data();
+    final hasRecap = data?['hasRecap'] == true;
+    final recapUrl = (data?['recapUrl'] as String?) ?? '';
+    // Lock only when recap exists and has a valid URL
+    return hasRecap && recapUrl.isNotEmpty;
+  }
+
+  /// Count total uploaded videos (type='upload') for a specific date in the active week
+  Future<int> countUploadedVideosForDate(DateTime date) async {
+    final user = _auth.currentUser;
+    if (user == null) return 0;
+
+    final week = await _getWeekContainingDate(date);
+    if (week == null) return 0;
+
+    final weekId = week['weekId'] as String;
+    final DateTime start = week['startDate'] as DateTime;
+    final diff = date.difference(start).inDays;
+    final dayIndex = diff + 1;
+
+    final uid = user.uid;
+    final videosSnapshot =
+        await _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('weeks')
+            .doc(weekId)
+            .collection('videos')
+            .where('dayIndex', isEqualTo: dayIndex)
+            .where('videoType', isEqualTo: 'upload')
+            .get();
+
+    return videosSnapshot.size;
+  }
+
+  /// Get the latest uploaded date in the week (furthest date with uploads)
+  /// Used to handle 'missing days' recovery logic:
+  /// - If user uploads on day 6 for days 7-8, they can only upload/record again on day 9+
+  Future<DateTime?> getLatestUploadedDateInWeek(String weekId) async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+
+    final week = await _getWeekContainingDate(DateTime.now());
+    if (week == null) return null;
+
+    final uid = user.uid;
+    final videosSnapshot =
+        await _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('weeks')
+            .doc(weekId)
+            .collection('videos')
+            .where('videoType', isEqualTo: 'upload')
+            .get();
+
+    if (videosSnapshot.docs.isEmpty) return null;
+
+    DateTime latestDate = DateTime(1970);
+    final DateTime start = week['startDate'] as DateTime;
+
+    for (final doc in videosSnapshot.docs) {
+      final data = doc.data();
+      final dayIndex = data['dayIndex'] as int? ?? 0;
+      // dayIndex is 1-based, convert to date
+      final videoDate = start.add(Duration(days: dayIndex - 1));
+      if (videoDate.isAfter(latestDate)) {
+        latestDate = videoDate;
+      }
+    }
+
+    return latestDate == DateTime(1970) ? null : latestDate;
   }
 
   /// Compute day index (1-based) for a selected date relative to the week's startDate.
@@ -938,6 +1215,8 @@ class FirestoreService {
   Future<bool> weekHasRecap(String weekId) async {
     final user = _auth.currentUser;
     if (user == null) return false;
+    // Admin bypass: always allow merge
+    if (user.email == 'lyya87396@gmail.com') return false;
 
     final uid = user.uid;
 

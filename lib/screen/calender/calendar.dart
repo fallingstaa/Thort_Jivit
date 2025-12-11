@@ -47,45 +47,102 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget build(BuildContext context) {
+    final bool isChristmasSeason = DateTime.now().month == 12;
+
     return Material(
       color: Colors.transparent,
       child: SafeArea(
         bottom: false,
-        child: Container(
-          color: const Color(0xFFF0F4F8),
-          child: Column(
-            children: [
-              _buildAppBarWidget(),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0,
-                      vertical: 12.0,
-                    ),
-                    child: Column(
-                      children: [
-                        _buildMonthSelector(),
-                        const SizedBox(height: 12),
-                        _buildCalendarGrid(),
-                        const SizedBox(height: 24),
-                        _buildStreakCard(),
-                        const SizedBox(height: 12),
-                        _buildAddRecordingButton(),
-                        const SizedBox(height: 80),
-                      ],
+        child: Stack(
+          children: [
+            Container(
+              color: const Color(0xFFF0F4F8),
+              child: Column(
+                children: [
+                  _buildAppBarWidget(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16.0,
+                          vertical: 12.0,
+                        ),
+                        child: Column(
+                          children: [
+                            if (isChristmasSeason)
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                                margin: const EdgeInsets.only(bottom: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF00A981),
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.08),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: const [
+                                    Text(
+                                      '❄',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                    SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'December magic: keep the streak glowing!',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '❄',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            _buildMonthSelector(),
+                            const SizedBox(height: 12),
+                            _buildCalendarGrid(),
+                            const SizedBox(height: 24),
+                            _buildStreakCard(),
+                            const SizedBox(height: 12),
+                            _buildAddRecordingButton(),
+                            const SizedBox(height: 80),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+                // Snow animation removed from Calendar screen (keep only on Home)
+          ],
         ),
       ),
     );
   }
 
   Widget _buildAppBarWidget() {
+    final bool isChristmasSeason = DateTime.now().month == 12;
     return Container(
       color: Colors.white,
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
@@ -95,13 +152,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
           SizedBox(
             height: 56,
             child: Center(
-              child: Text(
-                'Calendar',
-                style: TextStyle(
-                  color: Color(0xFF00A981),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (isChristmasSeason)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Text('❄', style: TextStyle(fontSize: 16)),
+                    ),
+                  Text(
+                    'Calendar',
+                    style: TextStyle(
+                      color: const Color(0xFF00A981),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                  if (isChristmasSeason)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8.0),
+                      child: Text('🎄', style: TextStyle(fontSize: 16)),
+                    ),
+                ],
               ),
             ),
           ),
@@ -739,5 +811,100 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _isSubmitting = false;
       });
     }
+  }
+
+  // Snow animation removed from Calendar screen
+}
+
+/// Snowflake dot widget that falls down with blinking animation
+class _SnowdotWidget extends StatefulWidget {
+  final double left;
+  final Duration delay;
+  final Duration animationDuration;
+
+  const _SnowdotWidget({
+    required this.left,
+    required this.delay,
+    required this.animationDuration,
+  });
+
+  @override
+  State<_SnowdotWidget> createState() => _SnowdotWidgetState();
+}
+
+class _SnowdotWidgetState extends State<_SnowdotWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _position;
+  late Animation<double> _opacity;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(widget.delay, () {
+      if (mounted) {
+        _controller = AnimationController(
+          duration: widget.animationDuration,
+          vsync: this,
+        )..repeat();
+
+        // Fall from top to bottom
+        _position = Tween<double>(
+          begin: -50,
+          end: MediaQuery.of(context).size.height + 50,
+        ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
+
+        // Gentle blink effect
+        _opacity = Tween<double>(begin: 0.6, end: 1.0).animate(
+          CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+        );
+
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    if (_isInitialized) {
+      _controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized) return const SizedBox();
+
+    final randomSize = 4.0 + ((widget.left.toInt() % 5)).toDouble();
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([_position, _opacity]),
+      builder: (context, child) {
+        return Positioned(
+          left: widget.left,
+          top: _position.value,
+          child: Opacity(opacity: _opacity.value, child: child),
+        );
+      },
+      child: Container(
+        width: randomSize,
+        height: randomSize,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withOpacity(0.95),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withOpacity(0.6),
+              blurRadius: randomSize * 1.5,
+              spreadRadius: randomSize * 0.5,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

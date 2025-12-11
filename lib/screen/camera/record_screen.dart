@@ -3,6 +3,7 @@ import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'dart:io';
+import 'package:thort_jivit/services/firestore_service.dart';
 import 'video_detail_screen.dart';
 
 class _MediaSizeClipper extends CustomClipper<Rect> {
@@ -76,7 +77,6 @@ class _RecordScreenState extends State<RecordScreen> {
         ResolutionPreset.medium,
         enableAudio: true,
       );
-
       _initializeControllerFuture = _controller!.initialize();
 
       // Wait for initialization to complete

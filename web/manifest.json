@@ -1,11 +1,6 @@
 {
-<<<<<<< HEAD
-    "name": "thort_jivit",
-    "short_name": "thort_jivit",
-=======
     "name": "life_record",
     "short_name": "life_record",
->>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
