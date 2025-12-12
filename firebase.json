@@ -1,1 +1,30 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"thort-jivit","appId":"1:262571734333:android:91a037240c1b38c3274154","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"thort-jivit","configurations":{"android":"1:262571734333:android:91a037240c1b38c3274154","ios":"1:262571734333:ios:425349e073cfdc84274154","macos":"1:262571734333:ios:425349e073cfdc84274154","web":"1:262571734333:web:52bf02788a00f558274154","windows":"1:262571734333:web:1107e46d809996ef274154"}}}}}}
+{
+	"flutter": {
+		"platforms": {
+			"android": {
+				"default": {
+					"projectId": "thort-jivit",
+					"appId": "1:262571734333:android:91a037240c1b38c3274154",
+					"fileOutput": "android/app/google-services.json"
+				}
+			}
+		},
+		"dart": {
+			"lib/firebase_options.dart": {
+				"projectId": "thort-jivit",
+				"configurations": {
+					"android": "1:262571734333:android:91a037240c1b38c3274154",
+					"ios": "1:262571734333:ios:425349e073cfdc84274154",
+					"macos": "1:262571734333:ios:425349e073cfdc84274154",
+					"web": "1:262571734333:web:52bf02788a00f558274154",
+					"windows": "1:262571734333:web:1107e46d809996ef274154"
+				}
+			}
+		}
+	},
+	"functions": {
+		"source": "functions",
+		"runtime": "nodejs22",
+		"codebase": "default"
+	}
+}

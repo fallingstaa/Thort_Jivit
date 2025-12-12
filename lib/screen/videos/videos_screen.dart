@@ -1,4 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:thort_jivit/services/firestore_service.dart';
+import 'package:thort_jivit/services/video_combiner_service.dart';
+import 'package:thort_jivit/services/music_service.dart';
+import 'package:thort_jivit/screen/videos/video_player_screen.dart';
+import 'package:thort_jivit/services/admin_utils.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 
 class VideosScreen extends StatefulWidget {
   const VideosScreen({Key? key}) : super(key: key);
@@ -7,112 +15,106 @@ class VideosScreen extends StatefulWidget {
   State<VideosScreen> createState() => _VideosScreenState();
 }
 
-class _VideosScreenState extends State<VideosScreen> {
+class _VideosScreenState extends State<VideosScreen>
+    with SingleTickerProviderStateMixin {
+  final FirestoreService _firestoreService = FirestoreService();
+  final VideoCombinerService _videoCombiner = VideoCombinerService();
   String selectedTab = 'Daily';
-  final List<String> tabs = ['Daily', 'Weekly', 'Monthly'];
+  final List<String> tabs = ['Daily', 'Weekly'];
+  List<Map<String, dynamic>> dailyVideos = [];
+  List<Map<String, dynamic>> weeklyVideos = [];
+  bool _isLoading = true;
+  bool _isCreatingRecap = false;
+  bool _canCreateRecap = false;
+  bool _isAdmin = false;
+  AnimationController? _animationController;
+  Animation<double>? _scaleAnimation;
 
-  // Mock data for daily videos
-  final List<Map<String, dynamic>> dailyVideos = [
-    {
-      'id': '1',
-      'title': 'Morning Coffee',
-      'date': 'October 8, 2025',
-      'thumbnail': 'assets/images/image.png',
-      'isFavorite': true,
-    },
-    {
-      'id': '2',
-      'title': 'Sunset Walk',
-      'date': 'October 7, 2025',
-      'thumbnail': 'assets/images/image.png',
-      'isFavorite': false,
-    },
-    {
-      'id': '3',
-      'title': 'Lunch Time',
-      'date': 'October 7, 2025',
-      'thumbnail': 'assets/images/image.png',
-      'isFavorite': false,
-    },
-    {
-      'id': '4',
-      'title': 'Reading Session',
-      'date': 'October 6, 2025',
-      'thumbnail': 'assets/images/image.png',
-      'isFavorite': false,
-    },
-    {
-      'id': '5',
-      'title': 'Workout Complete',
-      'date': 'October 6, 2025',
-      'thumbnail': 'assets/images/image.png',
-      'isFavorite': false,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadVideos();
 
-  // Mock data for weekly compilations
-  final List<Map<String, dynamic>> weeklyVideos = [
-    {
-      'id': 'w1',
-      'title': 'Week of Oct 1-7',
-      'clipsCount': 7,
-      'duration': '3:45',
-      'timestamp': '2 days ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-    {
-      'id': 'w2',
-      'title': 'Week of Sep 24-30',
-      'clipsCount': 5,
-      'duration': '2:30',
-      'timestamp': '1 week ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-    {
-      'id': 'w3',
-      'title': 'Week of Sep 17-23',
-      'clipsCount': 6,
-      'duration': '3:12',
-      'timestamp': '2 weeks ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-  ];
+    // Setup blinking animation
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
 
-  // Mock data for monthly compilations
-  final List<Map<String, dynamic>> monthlyVideos = [
-    {
-      'id': 'm1',
-      'title': 'October 2025',
-      'clipsCount': 24,
-      'duration': '12:45',
-      'timestamp': '3 days ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-    {
-      'id': 'm2',
-      'title': 'September 2025',
-      'clipsCount': 28,
-      'duration': '15:20',
-      'timestamp': '1 month ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-    {
-      'id': 'm3',
-      'title': 'August 2025',
-      'clipsCount': 31,
-      'duration': '18:05',
-      'timestamp': '2 months ago',
-      'thumbnail': 'assets/images/image.png',
-    },
-  ];
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+      CurvedAnimation(parent: _animationController!, curve: Curves.easeInOut),
+    );
+  }
+
+  Future<void> _loadVideos() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final videos = await _firestoreService.getAllUploadedVideos();
+      bool isAdmin = await isWebAdmin();
+      final recaps = await _firestoreService.getWeeklyRecaps(isAdmin: isAdmin);
+
+      // Check if current week can create recap
+      final activeWeek = await _firestoreService.getActiveWeekNow();
+      bool canCreate = false;
+      if (activeWeek != null) {
+        final weekId = activeWeek['weekId'] as String;
+        final weekVideos = videos.where((v) => v['weekId'] == weekId).toList();
+        final videoCount = weekVideos.length;
+        final hasEnoughVideos = _videoCombiner.canCreateRecap(videoCount);
+
+        print('[VIDEOS] Active week: $weekId');
+        print('[VIDEOS] Total videos loaded: ${videos.length}');
+        print('[VIDEOS] Videos for current week: $videoCount');
+        print(
+          '[VIDEOS] Week videos IDs: ${weekVideos.map((v) => v['dayId']).toList()}',
+        );
+        print(
+          '[VIDEOS] Week videos emojis: ${weekVideos.map((v) => v['emoji']).toList()}',
+        );
+        print(
+          '[VIDEOS] Week videos status: ${weekVideos.map((v) => '${v['dayId']}-uploaded').toList()}',
+        );
+        print('[VIDEOS] Has enough for recap (need 3): $hasEnoughVideos');
+
+        // For admin, always allow creating recap
+        if (isAdmin) {
+          canCreate = hasEnoughVideos;
+        } else {
+          // For normal users: check if week already has a recap
+          final alreadyHasRecap = await _firestoreService.weekHasRecap(weekId);
+          canCreate = hasEnoughVideos && !alreadyHasRecap;
+        }
+      }
+
+      setState(() {
+        dailyVideos = videos;
+        weeklyVideos = recaps;
+        _canCreateRecap = canCreate;
+        _isAdmin = isAdmin;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('[VIDEOS] Error loading videos: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController?.dispose();
+    super.dispose();
+  }
 
   // Get current video list based on selected tab
   List<Map<String, dynamic>> get currentVideos {
     switch (selectedTab) {
       case 'Weekly':
         return weeklyVideos;
-      case 'Monthly':
-        return monthlyVideos;
       default:
         return dailyVideos;
     }
@@ -123,6 +125,169 @@ class _VideosScreenState extends State<VideosScreen> {
       final video = dailyVideos.firstWhere((v) => v['id'] == videoId);
       video['isFavorite'] = !video['isFavorite'];
     });
+  }
+
+  Future<void> _createWeeklyRecap() async {
+    if (_isCreatingRecap) return;
+
+    setState(() {
+      _isCreatingRecap = true;
+    });
+
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (context) => const Center(
+              child: Card(
+                child: Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: Color(0xFF009688)),
+                      SizedBox(height: 16),
+                      Text(
+                        'Creating your weekly recap...',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+      );
+
+      // Get active week
+      final activeWeek = await _firestoreService.getActiveWeekNow();
+      if (activeWeek == null) {
+        throw Exception('No active week found');
+      }
+
+      final weekId = activeWeek['weekId'] as String;
+
+      // Get all daily videos for this week
+      final weekVideos =
+          dailyVideos.where((v) => v['weekId'] == weekId).toList();
+
+      print('[VIDEOS] DEBUG: Total dailyVideos: ${dailyVideos.length}');
+      print('[VIDEOS] DEBUG: ActiveWeekId: $weekId');
+      print('[VIDEOS] DEBUG: WeekVideos filtered: ${weekVideos.length}');
+      print(
+        '[VIDEOS] DEBUG: WeekVideos IDs: ${weekVideos.map((v) => v['id']).toList()}',
+      );
+      print(
+        '[VIDEOS] DEBUG: WeekVideos dayIndexes: ${weekVideos.map((v) => v['dayIndex']).toList()}',
+      );
+      print(
+        '[VIDEOS] DEBUG: WeekVideos types: ${weekVideos.map((v) => v['videoType']).toList()}',
+      );
+      print(
+        '[VIDEOS] DEBUG: WeekVideos URLs: ${weekVideos.map((v) => v['storageDownloadUrl']).toList()}',
+      );
+
+      final videoUrls =
+          weekVideos.map((v) => v['storageDownloadUrl'] as String).toList();
+      final videoPaths =
+          weekVideos
+              .map((v) => v['filePath'] as String? ?? '')
+              .where((p) => p.isNotEmpty)
+              .toList();
+
+      print('[VIDEOS] DEBUG: Final videoUrls count: ${videoUrls.length}');
+      print('[VIDEOS] DEBUG: Final videoPaths count: ${videoPaths.length}');
+      print('[VIDEOS] DEBUG: Final videoUrls: $videoUrls');
+
+      // Combine all videos for the week
+      final result = await _videoCombiner.combineVideos(
+        videoUrls: videoUrls,
+        videoPaths: videoPaths,
+      );
+
+      if (result['success'] == true) {
+        // Get first and last video dates for display
+        String firstVideoDate = '';
+        String lastVideoDate = '';
+        List<Map<String, dynamic>> mergeOrder = [];
+        if (weekVideos.isNotEmpty) {
+          final sortedVideos = List.from(weekVideos);
+          sortedVideos.sort(
+            (a, b) => (a['uploadedDate'] as DateTime).compareTo(
+              b['uploadedDate'] as DateTime,
+            ),
+          );
+          firstVideoDate = sortedVideos.first['uploadedDate'].toString();
+          lastVideoDate = sortedVideos.last['uploadedDate'].toString();
+
+          // Create merge order with position
+          for (int i = 0; i < sortedVideos.length; i++) {
+            mergeOrder.add({
+              'position': i + 1,
+              'day': sortedVideos[i]['dayIndex'] ?? 0,
+              'uploadedDate': sortedVideos[i]['uploadedDate'].toString(),
+              'duration': sortedVideos[i]['videoDuration'] ?? 'unknown',
+              'fileName': sortedVideos[i]['fileName'] ?? 'Video ${i + 1}',
+            });
+          }
+        }
+
+        // Save weekly recap
+        await _firestoreService.saveWeeklyRecap(
+          weekId: weekId,
+          recapUrl: result['recapUrl'],
+          clipsCount: result['clipsCount'],
+          duration: result['duration'],
+          isAdmin: _isAdmin,
+          firstVideoDate: firstVideoDate,
+          lastVideoDate: lastVideoDate,
+          mergeOrder: mergeOrder,
+        );
+
+        // Reload videos
+        await _loadVideos();
+
+        // Close loading dialog
+        if (mounted) Navigator.of(context).pop();
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✨ Weekly recap created successfully!'),
+              backgroundColor: Color(0xFF009688),
+              duration: Duration(seconds: 3),
+            ),
+          );
+
+          // Switch to Weekly tab
+          setState(() {
+            selectedTab = 'Weekly';
+          });
+        }
+      } else {
+        throw Exception(result['message'] ?? 'Failed to create recap');
+      }
+    } catch (e) {
+      print('[VIDEOS] Error creating recap: $e');
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCreatingRecap = false;
+        });
+      }
+    }
   }
 
   void _showVideoOptions(String videoId) {
@@ -269,23 +434,131 @@ class _VideosScreenState extends State<VideosScreen> {
 
           // Videos List
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: currentVideos.length,
-              itemBuilder: (context, index) {
-                final video = currentVideos[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child:
-                      selectedTab == 'Daily'
-                          ? _buildDailyVideoCard(video)
-                          : _buildCompilationCard(video),
-                );
-              },
-            ),
+            child:
+                _isLoading
+                    ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF009688),
+                      ),
+                    )
+                    : currentVideos.isEmpty
+                    ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            selectedTab == 'Weekly'
+                                ? Icons.movie_creation_outlined
+                                : Icons.videocam_off_outlined,
+                            size: 64,
+                            color: const Color(0xFFBDBDBD),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            selectedTab == 'Weekly'
+                                ? 'No weekly recap yet'
+                                : 'No videos yet',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF757575),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            selectedTab == 'Weekly'
+                                ? 'Weekly recap videos coming soon!'
+                                : 'Start recording your memories',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF9E9E9E),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                    : ListView.builder(
+                      padding: const EdgeInsets.only(
+                        left: 20,
+                        right: 20,
+                        bottom: 100,
+                      ),
+                      itemCount: currentVideos.length,
+                      itemBuilder: (context, index) {
+                        final video = currentVideos[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child:
+                              selectedTab == 'Daily'
+                                  ? _buildDailyVideoCard(video)
+                                  : _buildCompilationCard(video),
+                        );
+                      },
+                    ),
           ),
         ],
       ),
+      floatingActionButton:
+          selectedTab == 'Daily' && _canCreateRecap && _scaleAnimation != null
+              ? ScaleTransition(
+                scale: _scaleAnimation!,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFFD700), // Gold
+                        Color(0xFFFFA500), // Orange-gold
+                        Color(0xFFFFD700), // Gold
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFFD700).withOpacity(0.5),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(30),
+                    child: InkWell(
+                      onTap: _canCreateRecap ? _createWeeklyRecap : null,
+                      borderRadius: BorderRadius.circular(30),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 14,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(
+                              Icons.auto_awesome,
+                              size: 24,
+                              color: Colors.white,
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              'Roll into the Memories Now',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -309,8 +582,20 @@ class _VideosScreenState extends State<VideosScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            // Navigate to video detail screen
-            // Navigator.push(context, MaterialPageRoute(builder: (context) => VideoDetailScreen()));
+            // Navigate to video player screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (context) => VideoPlayerScreen(
+                      videoUrl: video['storageDownloadUrl'] ?? '',
+                      emoji: video['emoji']?.toString() ?? '',
+                      description:
+                          video['textNote']?.toString() ?? 'No description',
+                      date: video['date']?.toString() ?? '',
+                    ),
+              ),
+            );
           },
           borderRadius: BorderRadius.circular(16),
           child: Padding(
@@ -327,45 +612,54 @@ class _VideosScreenState extends State<VideosScreen> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      video['thumbnail'],
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: const Color(0xFFE0E0E0),
-                          child: const Icon(
-                            Icons.play_circle_outline,
-                            size: 32,
-                            color: Color(0xFF757575),
-                          ),
-                        );
-                      },
+                    child: Container(
+                      color: const Color(0xFFE0E0E0),
+                      child: const Icon(
+                        Icons.play_circle_outline,
+                        size: 32,
+                        color: Color(0xFF757575),
+                      ),
                     ),
                   ),
                 ),
 
                 const SizedBox(width: 12),
 
-                // Title and Date
+                // Emoji, Description and Date
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        video['title'],
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1A1A1A),
-                          height: 1.3,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          if (video['emoji'] != null &&
+                              video['emoji'].toString().isNotEmpty) ...[
+                            Text(
+                              video['emoji'].toString(),
+                              style: const TextStyle(fontSize: 18),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Expanded(
+                            child: Text(
+                              (video['textNote'] ?? 'No description')
+                                  .toString(),
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1A1A1A),
+                                height: 1.3,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        video['date'],
+                        (video['date'] ?? '').toString(),
                         style: const TextStyle(
                           fontSize: 12,
                           color: Color(0xFF9E9E9E),
@@ -434,6 +728,21 @@ class _VideosScreenState extends State<VideosScreen> {
         child: InkWell(
           onTap: () {
             // Navigate to compilation video player
+            if (compilation['recapUrl'] != null &&
+                compilation['recapUrl'].toString().isNotEmpty) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => VideoPlayerScreen(
+                        videoUrl: compilation['recapUrl'],
+                        emoji: '🎬',
+                        description: compilation['title'] ?? 'Weekly Recap',
+                        date: compilation['timestamp'] ?? '',
+                      ),
+                ),
+              );
+            }
           },
           borderRadius: BorderRadius.circular(20),
           child: Column(
@@ -446,21 +755,101 @@ class _VideosScreenState extends State<VideosScreen> {
                 ),
                 child: AspectRatio(
                   aspectRatio: 16 / 9,
-                  child: Image.asset(
-                    compilation['thumbnail'],
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: const Color(0xFFE0E0E0),
-                        child: const Center(
-                          child: Icon(
-                            Icons.play_circle_outline,
-                            size: 64,
-                            color: Color(0xFF757575),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Color(0xFF0D0D0D), // Pure black
+                          Color(0xFF1C1C1C), // Slightly lighter black
+                          Color(0xFF0D0D0D), // Pure black
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.6),
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        // Film grain texture overlay
+                        Positioned.fill(
+                          child: Opacity(
+                            opacity: 0.08,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: RadialGradient(
+                                  center: Alignment.center,
+                                  radius: 1.0,
+                                  colors: [
+                                    Colors.white.withOpacity(0.05),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      );
-                    },
+                        // Vignette effect
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: RadialGradient(
+                                center: Alignment.center,
+                                radius: 0.7,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.7),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Center content
+                        Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.25),
+                                    width: 1.5,
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.movie_filter_outlined,
+                                  size: 52,
+                                  color: Colors.white.withOpacity(0.85),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'WEEKLY RECAP',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white.withOpacity(0.75),
+                                  letterSpacing: 3.5,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                width: 60,
+                                height: 1,
+                                color: Colors.white.withOpacity(0.2),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -487,6 +876,12 @@ class _VideosScreenState extends State<VideosScreen> {
                     // Stats Row (clips count and duration)
                     Row(
                       children: [
+                        Icon(
+                          Icons.video_library_outlined,
+                          size: 16,
+                          color: Color(0xFF757575),
+                        ),
+                        const SizedBox(width: 4),
                         Text(
                           '${compilation['clipsCount']} clips',
                           style: const TextStyle(
@@ -495,16 +890,13 @@ class _VideosScreenState extends State<VideosScreen> {
                             height: 1.3,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Container(
-                          width: 4,
-                          height: 4,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF757575),
-                            shape: BoxShape.circle,
-                          ),
+                        const SizedBox(width: 12),
+                        Icon(
+                          Icons.access_time_outlined,
+                          size: 16,
+                          color: Color(0xFF757575),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         Text(
                           compilation['duration'],
                           style: const TextStyle(
@@ -516,19 +908,57 @@ class _VideosScreenState extends State<VideosScreen> {
                       ],
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 8),
 
-                    // Timestamp
-                    Text(
-                      compilation['timestamp'],
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF9E9E9E),
-                        height: 1.3,
+                    // Merge date and time
+                    if (compilation['createdAt'] != null)
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.access_time,
+                            size: 14,
+                            color: Color(0xFF9E9E9E),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Merged ${_formatMergeDateTime(compilation['createdAt'])}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF9E9E9E),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+
+                    // Selected music track (if any)
+                    if ((compilation['selectedMusicTrack'] ?? '')
+                        .toString()
+                        .isNotEmpty)
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.music_note,
+                            size: 16,
+                            color: Color(0xFF757575),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              compilation['selectedMusicTrack'],
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF757575),
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                    const SizedBox(height: 12),
 
                     // Action Buttons Row
                     Row(
@@ -538,9 +968,7 @@ class _VideosScreenState extends State<VideosScreen> {
                           icon: Icons.share_outlined,
                           label: 'Share',
                           color: const Color(0xFF009688),
-                          onTap: () {
-                            // Handle share
-                          },
+                          onTap: () => _shareRecap(compilation),
                         ),
 
                         const SizedBox(width: 12),
@@ -550,9 +978,7 @@ class _VideosScreenState extends State<VideosScreen> {
                           icon: Icons.file_download_outlined,
                           label: 'Save',
                           color: const Color(0xFF009688),
-                          onTap: () {
-                            // Handle save
-                          },
+                          onTap: () => _saveRecap(compilation),
                         ),
 
                         const SizedBox(width: 12),
@@ -562,9 +988,18 @@ class _VideosScreenState extends State<VideosScreen> {
                           icon: Icons.music_note_outlined,
                           label: '',
                           color: const Color(0xFF009688),
-                          onTap: () {
-                            // Handle music
-                          },
+                          onTap: () => _openMusicPicker(compilation),
+                          iconOnly: true,
+                        ),
+
+                        const SizedBox(width: 12),
+
+                        // Delete Button
+                        _buildActionButton(
+                          icon: Icons.delete_outline,
+                          label: '',
+                          color: const Color(0xFFE53935),
+                          onTap: () => _deleteRecap(compilation),
                           iconOnly: true,
                         ),
                       ],
@@ -577,6 +1012,501 @@ class _VideosScreenState extends State<VideosScreen> {
         ),
       ),
     );
+  }
+
+  // Delete a weekly recap
+  Future<void> _deleteRecap(Map<String, dynamic> compilation) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Delete Recap?'),
+            content: const Text(
+              'Are you sure you want to delete this weekly recap? This action cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFE53935),
+                ),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (context) => const Center(
+              child: Card(
+                child: Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: Color(0xFF009688)),
+                      SizedBox(height: 16),
+                      Text('Deleting recap...'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+      );
+
+      // Delete the recap
+      await _firestoreService.deleteWeeklyRecap(
+        weekId: compilation['weekId'],
+        recapId: compilation['id'],
+        isAdmin: _isAdmin,
+      );
+
+      // Reload videos
+      await _loadVideos();
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Recap deleted successfully'),
+            backgroundColor: Color(0xFF009688),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('[VIDEOS] Error deleting recap: $e');
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting recap: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _openMusicPicker(Map<String, dynamic> compilation) async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return FutureBuilder<List<String>>(
+          future: MusicService().getMusicLibrary(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(
+                height: 200,
+                child: Center(
+                  child: CircularProgressIndicator(color: Color(0xFF009688)),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return SizedBox(
+                height: 200,
+                child: Center(
+                  child: Text(
+                    'Error loading music: ${snapshot.error}',
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+              );
+            }
+
+            final tracks = snapshot.data ?? [];
+            if (tracks.isEmpty) {
+              return const SizedBox(
+                height: 200,
+                child: Center(child: Text('No music found in music_library')),
+              );
+            }
+
+            return SizedBox(
+              height: 320,
+              child: Column(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'Choose background music',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: tracks.length,
+                      itemBuilder: (context, index) {
+                        final track = tracks[index];
+                        final isSelected =
+                            (compilation['selectedMusicTrack'] ?? '') == track;
+                        return ListTile(
+                          leading: const Icon(
+                            Icons.music_note,
+                            color: Color(0xFF009688),
+                          ),
+                          title: Text(track),
+                          trailing:
+                              isSelected
+                                  ? const Icon(
+                                    Icons.check,
+                                    color: Color(0xFF009688),
+                                  )
+                                  : null,
+                          onTap: () {
+                            Navigator.pop(context);
+                            _confirmChangeMusic(compilation, track);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmChangeMusic(
+    Map<String, dynamic> compilation,
+    String track,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Change music?'),
+            content: Text('Replace the recap background music with "$track"?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Confirm'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed == true) {
+      await _applyMusicSelection(compilation, track);
+    }
+  }
+
+  Future<void> _applyMusicSelection(
+    Map<String, dynamic> compilation,
+    String track,
+  ) async {
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => const Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Color(0xFF009688)),
+                    SizedBox(height: 16),
+                    Text('Updating music...'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+    );
+
+    try {
+      final result = await _videoCombiner.changeRecapMusic(
+        recapUrl: compilation['recapUrl'],
+        weekId: compilation['weekId'],
+        musicFileName: track,
+      );
+
+      if (result['success'] == true) {
+        final newUrl = result['recapUrl'] as String? ?? '';
+        await _firestoreService.updateRecapMusicTrack(
+          weekId: compilation['weekId'],
+          recapId: compilation['id'],
+          musicFileName: track,
+          recapUrl: newUrl,
+        );
+
+        // Update local data immediately so Save uses fresh audio version
+        compilation['recapUrl'] = newUrl;
+        compilation['selectedMusicTrack'] = track;
+
+        await _loadVideos();
+
+        if (mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Music updated to "$track"'),
+              backgroundColor: const Color(0xFF009688),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        throw Exception(result['message'] ?? 'Failed to change music');
+      }
+    } catch (e) {
+      print('[VIDEOS] Error changing music: $e');
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating music: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveRecap(Map<String, dynamic> compilation) async {
+    final recapUrl = (compilation['recapUrl'] as String?) ?? '';
+
+    if (recapUrl.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No recap URL available to download.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final uri = Uri.tryParse(recapUrl);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid recap URL.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final mode =
+          kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication;
+      final launched = await launchUrl(uri, mode: mode);
+
+      if (!launched) throw Exception('Could not open recap link');
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Opening recap download...'),
+          backgroundColor: Color(0xFF009688),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to open recap. If this is your first run after adding url_launcher, fully restart the app. Error: $e',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _shareRecap(Map<String, dynamic> compilation) async {
+    final recapUrl = (compilation['recapUrl'] as String?) ?? '';
+
+    if (recapUrl.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No recap URL available to share.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      if (kIsWeb) {
+        // On web: show dialog with share options
+        if (!mounted) return;
+        await showDialog(
+          context: context,
+          builder:
+              (context) => AlertDialog(
+                title: const Text('Share Recap'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Instagram direct sharing is not available on web. You can:',
+                    ),
+                    const SizedBox(height: 16),
+                    ListTile(
+                      leading: const Icon(Icons.link, color: Color(0xFF009688)),
+                      title: const Text('Copy Link'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _copyRecapLink(recapUrl);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.download,
+                        color: Color(0xFF009688),
+                      ),
+                      title: const Text('Download & Share Manually'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _saveRecap(compilation);
+                      },
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                ],
+              ),
+        );
+      } else {
+        // On mobile: use share sheet (will show Instagram if installed)
+        final result = await Share.shareUri(
+          Uri.parse(recapUrl),
+          sharePositionOrigin: Rect.fromLTWH(0, 0, 10, 10),
+        );
+
+        if (!mounted) return;
+        if (result.status == ShareResultStatus.success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Shared successfully!'),
+              backgroundColor: Color(0xFF009688),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to share: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _copyRecapLink(String url) {
+    // For web, we can use Share.share with text
+    Share.share('Check out my weekly recap: $url', subject: 'Weekly Recap');
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Share dialog opened!'),
+          backgroundColor: Color(0xFF009688),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  // Format merge date and time for display
+  String _formatMergeDateTime(dynamic timestamp) {
+    if (timestamp == null) return 'unknown';
+
+    try {
+      DateTime dateTime;
+      if (timestamp is DateTime) {
+        dateTime = timestamp;
+      } else if (timestamp.toString().contains('Timestamp')) {
+        // Firestore Timestamp object
+        dateTime = (timestamp as dynamic).toDate();
+      } else {
+        return 'unknown';
+      }
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final yesterday = today.subtract(const Duration(days: 1));
+      final dateOnly = DateTime(dateTime.year, dateTime.month, dateTime.day);
+
+      // Format time
+      final hour = dateTime.hour.toString().padLeft(2, '0');
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      final timeStr = '$hour:$minute';
+
+      if (dateOnly == today) {
+        return 'today at $timeStr';
+      } else if (dateOnly == yesterday) {
+        return 'yesterday at $timeStr';
+      } else {
+        // Format as "Jan 15 at 14:30"
+        const months = [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
+        ];
+        return '${months[dateTime.month - 1]} ${dateTime.day} at $timeStr';
+      }
+    } catch (e) {
+      return 'unknown';
+    }
   }
 
   // Action button widget for compilation cards

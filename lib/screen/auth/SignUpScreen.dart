@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 // --- Added Firebase imports ---
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../main_navigation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -52,7 +53,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ],
                 ),
               ),
-              _buildFooter(),
             ],
           ),
         ),
@@ -145,11 +145,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           _buildPasswordRequirement(),
           const SizedBox(height: 20),
           _buildCreateAccountButton(),
-          const SizedBox(height: 16),
-          _buildDivider(),
-          const SizedBox(height: 16),
-          _buildSocialLoginButtons(),
-          const SizedBox(height: 16),
+          // ...existing code...
           _buildSignInLink(),
         ],
       ),
@@ -405,6 +401,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
             // --- Show success dialog and then navigate ---
             if (mounted) {
+              // Remember email for convenience
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('lastEmail', _emailController.text.trim());
               _showSuccessDialog();
             }
           } on FirebaseAuthException catch (e) {
@@ -448,37 +447,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Widget _buildDivider() {
-    return Row(
-      children: [
-        Expanded(child: Divider(color: Colors.grey.shade300)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Text(
-            'or sign up with',
-            style: TextStyle(color: Colors.grey.shade600),
-          ),
-        ),
-        Expanded(child: Divider(color: Colors.grey.shade300)),
-      ],
-    );
+    // Removed social login divider
+    return const SizedBox.shrink();
   }
 
   Widget _buildSocialLoginButtons() {
-    return Column(
-      children: [
-        _buildSocialButton(
-          label: 'Continue with Google',
-          iconAsset: 'assets/images/icons8-google-48.png',
-          onPressed: () {},
-        ),
-        const SizedBox(height: 12),
-        _buildSocialButton(
-          label: 'Sign up with Facebook',
-          iconAsset: 'assets/images/icons8-facebook-logo-48.png',
-          onPressed: () {},
-        ),
-      ],
-    );
+    // Removed Google and Facebook social login buttons
+    return const SizedBox.shrink();
   }
 
   Widget _buildSocialButton({
@@ -534,23 +509,5 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildFooter() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: GestureDetector(
-          onTap: () {
-            // TODO: Add navigation logic to welcome screen
-          },
-          child: const Text(
-            'Back to welcome screen',
-            style: TextStyle(
-              color: Color(0xFF008060),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  // ...existing code...
 }

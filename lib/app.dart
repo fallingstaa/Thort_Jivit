@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:thort_jivit/screen/music/MusicScreen.dart';
+import 'package:thort_jivit/screen/welcome_screen.dart';
+import 'package:thort_jivit/screen/splash_screen.dart';
 import 'package:thort_jivit/screen/auth/SignInScreen.dart';
 import 'package:thort_jivit/screen/auth/SignUpScreen.dart';
-import 'package:thort_jivit/screen/home/HomePage.dart';
-
-import 'package:thort_jivit/screen/welcome.dart'; // Ensure correct path
 
 import 'package:thort_jivit/theme.dart';
 
@@ -13,37 +11,29 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Keep green as primary, just add festive accents in December
+    final Color primary = primaryBrandGreen;
+
     return MaterialApp(
       title: 'THOT JIVIT',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // Set the primary color for buttons and accents
-        primaryColor: primaryBrandGreen,
+        primaryColor: primary,
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: primaryBrandGreen,
-          primary: primaryBrandGreen,
-        ),
-        // Define text theme for consistency
-        textTheme: const TextTheme(
-          // For the main app title on the welcome screen
+        colorScheme: ColorScheme.fromSeed(seedColor: primary, primary: primary),
+        textTheme: TextTheme(
           headlineLarge: TextStyle(
-            color: primaryBrandGreen,
+            color: primary,
             fontWeight: FontWeight.w900,
             fontSize: 32,
             letterSpacing: 2.0,
           ),
-          // For the body text descriptions
-          bodyMedium: TextStyle(
-            color: Color(0xFF666666), // Darker grey for readability
-            height: 1.5,
-          ),
+          bodyMedium: const TextStyle(color: Color(0xFF666666), height: 1.5),
         ),
-        // Define elevated button style
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             minimumSize: const Size.fromHeight(55),
-            backgroundColor: primaryBrandGreen,
+            backgroundColor: primary,
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30.0),
@@ -54,8 +44,16 @@ class App extends StatelessWidget {
             ),
           ),
         ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+        ),
       ),
-      home: const SignInScreen(),
+      home: const SplashScreen(),
+      routes: {
+        '/signin': (context) => const SignInScreen(),
+        '/signup': (context) => const SignUpScreen(),
+      },
     );
   }
 }
