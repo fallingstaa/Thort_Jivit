@@ -72,7 +72,7 @@ class WelcomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Size screenSize = MediaQuery.of(context).size;
-    final Color primaryBrandGreen = const Color(0xFF008060);
+    const Color primaryBrandGreen = Color(0xFF008060);
 
     return Scaffold(
       body: Stack(

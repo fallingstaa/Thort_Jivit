@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 // Using PNG for logo to ensure compatibility
 
 class WelcomeScreen extends StatelessWidget {
-  const WelcomeScreen({Key? key}) : super(key: key);
+  const WelcomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

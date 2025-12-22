@@ -82,17 +82,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      child: Row(
+      child: const Row(
         children: [
-          const CircleAvatar(
+          CircleAvatar(
             radius: 28,
             // You can replace this with a NetworkImage or an AssetImage
             // For example: backgroundImage: AssetImage('assets/images/your_profile_pic.png')
             backgroundColor: Colors.white,
             child: Icon(Icons.person, size: 30, color: Color(0xFF00A981)),
           ),
-          const SizedBox(width: 12),
-          const Column(
+          SizedBox(width: 12),
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -113,11 +113,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          const Spacer(),
+          Spacer(),
           Chip(
             backgroundColor: Colors.orange,
-            avatar: const Icon(Icons.whatshot, color: Colors.white, size: 20),
-            label: const Text(
+            avatar: Icon(Icons.whatshot, color: Colors.white, size: 20),
+            label: Text(
               '5-day streak',
               style: TextStyle(
                 color: Colors.white,
@@ -141,10 +141,10 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'Weekly Progress',
                 style: TextStyle(
                   fontSize: 16,
@@ -152,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.black87,
                 ),
               ),
-              const Text(
+              Text(
                 '6/7 days',
                 style: TextStyle(
                   fontSize: 14,

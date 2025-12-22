@@ -26,5 +26,8 @@
 		"source": "functions",
 		"runtime": "nodejs22",
 		"codebase": "default"
+	},
+	"storage": {
+		"rules": "storage.rules"
 	}
 }

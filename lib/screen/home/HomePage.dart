@@ -1,23 +1,20 @@
 import 'package:flutter/material.dart';
-import '../calender/calendar.dart';
-import '../profile/profile.dart';
+import 'package:flutter/services.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../camera/record_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:thort_jivit/services/firestore_service.dart';
 
-import '../videos/videos_screen.dart';
-
 class HomePage extends StatefulWidget {
   final bool showBottomNav;
 
-  const HomePage({Key? key, this.showBottomNav = true}) : super(key: key);
+  const HomePage({super.key, this.showBottomNav = true});
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage>
-    with SingleTickerProviderStateMixin {
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
   // Get current user from Firebase
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final FirestoreService _firestoreService = FirestoreService();
@@ -26,7 +23,10 @@ class _HomePageState extends State<HomePage>
   List<Map<String, dynamic>> _weekDays = [];
   bool _canRecordToday = true;
   bool _isCheckingRecord = true;
-  AnimationController? _helpButtonAnimation;
+  
+  // Animation for guide button
+  late AnimationController _guideButtonController;
+  late Animation<double> _guideButtonAnimation;
 
   @override
   void initState() {
@@ -34,17 +34,25 @@ class _HomePageState extends State<HomePage>
     _loadStreak();
     _loadWeekData();
     _checkCanRecord();
-
-    // Setup blinking animation for help button
-    _helpButtonAnimation = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+    
+    // Setup guide button pulsing animation
+    _guideButtonController = AnimationController(
+      duration: const Duration(milliseconds: 2000),
       vsync: this,
     )..repeat(reverse: true);
+    
+    _guideButtonAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.15,
+    ).animate(CurvedAnimation(
+      parent: _guideButtonController,
+      curve: Curves.easeInOut,
+    ));
   }
-
+  
   @override
   void dispose() {
-    _helpButtonAnimation?.dispose();
+    _guideButtonController.dispose();
     super.dispose();
   }
 
@@ -65,11 +73,26 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _checkCanRecord() async {
-    final canRecord = await _firestoreService.canRecordToday();
     setState(() {
-      _canRecordToday = canRecord;
-      _isCheckingRecord = false;
+      _isCheckingRecord = true;
     });
+    
+    // Check with retry for Firestore eventual consistency
+    bool canRecord = await _firestoreService.canRecordToday();
+    
+    // If still true, double-check after a delay
+    if (canRecord) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      canRecord = await _firestoreService.canRecordToday(retryCount: 1);
+    }
+    
+    if (mounted) {
+      setState(() {
+        _canRecordToday = canRecord;
+        _isCheckingRecord = false;
+      });
+      print('[HOMEPAGE] Record button state: canRecord=$canRecord');
+    }
   }
 
   // Get username - with fallback options
@@ -145,16 +168,18 @@ class _HomePageState extends State<HomePage>
 
   /// Show guidelines modal about merging rules
   void _showGuidelineModal() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
       builder:
           (context) => Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
@@ -165,22 +190,19 @@ class _HomePageState extends State<HomePage>
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF008060),
-                          const Color(0xFF00A978),
-                        ],
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF008060), Color(0xFF00A978)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Row(
-                      children: const [
-                        Icon(
-                          Icons.lightbulb_outline,
+                    child: const Row(
+                      children: [
+                        const FaIcon(
+                          FontAwesomeIcons.lightbulb,
                           color: Colors.white,
-                          size: 28,
+                          size: 24,
                         ),
                         SizedBox(width: 12),
                         Expanded(
@@ -211,10 +233,60 @@ class _HomePageState extends State<HomePage>
                     ),
                   ),
                   const SizedBox(height: 24),
+                  // Quick Features Section
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF0F4F8),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF00A978).withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            FaIcon(
+                              FontAwesomeIcons.star,
+                              color: const Color(0xFF008060),
+                              size: 18,
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Quick Features',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? const Color(0xFFE0E0E0) : const Color(0xFF1A1A1A),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildQuickFeature(
+                          '🔔',
+                          'Smart Daily Reminders',
+                          'Get a friendly reminder at 12 PM only if you haven\'t recorded yet. No spam!',
+                          isDark,
+                        ),
+                        const SizedBox(height: 10),
+                        _buildQuickFeature(
+                          '📊',
+                          'Weekly Progress Tracker',
+                          'See all 7 days of your week with dates. Track your recording progress visually.',
+                          isDark,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   _buildGuidelineSection(
                     '📹',
                     '1. Record Videos',
-                    'You can only record your video for TODAY.\nYou cannot record for yesterday or tomorrow.\nOnly 1 video per day is allowed.\n\nExample: If today is December 11, you can record only for December 11.\n\nSuggestion: Short clips (10–15s) tend to be more memorable and eye‑catching. Longer videos still work — keep it concise for the best recap.',
+                    'You can only record your video for TODAY.\nYou cannot record for yesterday or tomorrow.\nOnly 1 video per day is allowed.\n\nExample: If today is December 11, you can record only for December 11.\n\n💡 Tip: Short clips (10–15s) tend to be more memorable and eye‑catching. Longer videos still work — keep it concise for the best recap.',
                   ),
                   _buildGuidelineSection(
                     '⬆️',
@@ -222,48 +294,86 @@ class _HomePageState extends State<HomePage>
                     'You can upload videos for any missed day within the current week—even if that day has already passed.\nYou can also upload up to 2 days in advance.\n\nExample: If you missed recording on the 9th or 10th, you can still upload for those days as long as it\'s within the same week. If today is Thursday, you can also upload for Friday and Saturday.',
                   ),
                   _buildGuidelineSection(
+                    '📊',
+                    '3. Track Your Weekly Progress',
+                    'The Weekly Progress card shows all 7 days of your current week (Monday–Sunday).\n\n• See actual calendar dates for each day\n• Checkmarks (✓) show days you\'ve recorded\n• Progress counter shows "X/7" (e.g., "3/7")\n• Progress bar visualizes your completion\n\nEven if you\'re new and haven\'t recorded anything, you\'ll see all 7 days displayed immediately. As you record videos, checkmarks will appear automatically.',
+                  ),
+                  _buildGuidelineSection(
+                    '🔔',
+                    '4. Smart Daily Reminders',
+                    'Never miss a recording with our smart notification system!\n\n• Daily reminder at 12:00 PM (your local time)\n• Only sends if you haven\'t recorded yet\n• No notifications if you already recorded (no spam!)\n• Works even when the app is closed\n\nTo manage: Go to Profile → Privacy & Security → Notifications\n\nExample: Record at 11 AM → No notification at 12 PM. Forget to record → Get a friendly reminder!',
+                  ),
+                  _buildGuidelineSection(
                     '🎬',
-                    '3. Create Your First Recap',
+                    '5. Create Your First Recap',
                     'You need at least 3 videos to create a recap.\nThese can be recorded today or uploaded in advance — both are okay.\nOnce you create your recap for the week, it is final and cannot be edited or deleted.\n\nExample: Record 1 video today + upload 2 videos for the next days = 3 videos → recap is unlocked.',
                   ),
                   _buildGuidelineSection(
                     '⏱️',
-                    '4. When You Can Create a Recap',
+                    '6. When You Can Create a Recap',
                     'You can create a recap as soon as you have 3 or more videos in a week.\n\nNo waiting needed—the moment you reach 3 videos, your recap is ready to create.\n\nEach week is separate: once you create a recap for one week, the next week starts fresh.',
                   ),
                   _buildGuidelineSection(
                     '🔒',
-                    '5. What Happens After',
+                    '7. What Happens After',
                     'Once you create a recap for a week, that week becomes locked.\nYou cannot add more videos, change anything, or delete the recap.\n\nA new week will automatically start, and you can begin recording or uploading new videos again.',
                   ),
                   const SizedBox(height: 20),
                   // Info banner
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0F4F8),
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF008060).withOpacity(0.1),
+                          const Color(0xFF00A978).withOpacity(0.1),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: const Color(0xFF00A978).withOpacity(0.2),
-                        width: 1,
+                        color: const Color(0xFF00A978).withOpacity(0.3),
+                        width: 1.5,
                       ),
                     ),
                     child: Row(
-                      children: const [
-                        Icon(
-                          Icons.info_outline,
-                          color: Color(0xFF00A978),
-                          size: 18,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00A978).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const FaIcon(
+                            FontAwesomeIcons.circleInfo,
+                            color: Color(0xFF00A978),
+                            size: 16,
+                          ),
                         ),
-                        SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
-                          child: Text(
-                            'You can access this guide anytime by tapping the Guide button',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF666666),
-                              fontWeight: FontWeight.w500,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Need Help?',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark ? const Color(0xFFE0E0E0) : const Color(0xFF1A1A1A),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Tap the Guide button (?) anytime to see this help',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? const Color(0xFFB0B0B0) : const Color(0xFF666666),
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -304,12 +414,13 @@ class _HomePageState extends State<HomePage>
     String title,
     String description,
   ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF0F4F8),
+          color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF0F4F8),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: const Color(0xFF00A978).withOpacity(0.2),
@@ -321,29 +432,36 @@ class _HomePageState extends State<HomePage>
           children: [
             Row(
               children: [
-                Text(emoji, style: const TextStyle(fontSize: 20)),
-                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF008060).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(emoji, style: const TextStyle(fontSize: 18)),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 14,
+                    style: TextStyle(
+                      fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF008060),
+                      color: isDark ? const Color(0xFFE0E0E0) : const Color(0xFF1A1A1A),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Padding(
-              padding: const EdgeInsets.only(left: 30),
+              padding: const EdgeInsets.only(left: 0),
               child: Text(
                 description,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF666666),
-                  height: 1.6,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: isDark ? const Color(0xFFB0B0B0) : const Color(0xFF666666),
+                  height: 1.7,
                 ),
               ),
             ),
@@ -353,735 +471,531 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// Build falling snow animation with white dots
-  Widget _buildSnowAnimation() {
-    return Stack(
-      children: List.generate(200, (index) {
-        // Use DateTime to create truly random values for each snowflake
-        final timeOffset = DateTime.now().millisecondsSinceEpoch;
-        final randomLeft =
-            ((index * 9973 + timeOffset * 7) % 10000) /
-            10000.0 *
-            MediaQuery.of(context).size.width;
-        final randomDelay =
-            ((index * 7919 + timeOffset * 13) % 8000).toDouble();
-        final randomDuration =
-            (10 + ((index * 3571 + timeOffset * 11) % 12)).toInt();
-        return _SnowdotWidget(
-          left: randomLeft,
-          delay: Duration(milliseconds: randomDelay.toInt()),
-          animationDuration: Duration(seconds: randomDuration),
-        );
-      }),
+  /// Build a quick feature item for the features section
+  Widget _buildQuickFeature(
+    String emoji,
+    String title,
+    String description,
+    bool isDark,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 18)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? const Color(0xFFE0E0E0) : const Color(0xFF1A1A1A),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? const Color(0xFFB0B0B0) : const Color(0xFF666666),
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool isChristmasSeason = DateTime.now().month == 12;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isTablet = screenWidth > 600;
+    final horizontalPadding = isTablet ? 32.0 : 16.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Set status bar to light icons for the green header
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+    );
 
     return Scaffold(
       body: Stack(
         children: [
-          SingleChildScrollView(
-            child: Column(
-              children: [
-                // Header Section
-                Container(
-                  // margin: const EdgeInsets.all(16),
-                  padding: EdgeInsets.only(
-                    top: MediaQuery.of(context).padding.top + 20,
-                    left: 20,
-                    right: 20,
-                    bottom: 20,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF008060),
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(20),
-                      bottomRight: Radius.circular(20),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(100),
-                        ),
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Positioned.fill(
-                              child:
-                                  currentUser?.photoURL != null
-                                      ? ClipRRect(
-                                        borderRadius: BorderRadius.circular(
-                                          100,
-                                        ),
-                                        child: Image.network(
-                                          currentUser!.photoURL!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (
-                                            context,
-                                            error,
-                                            stackTrace,
-                                          ) {
-                                            return _buildUserInitials();
-                                          },
-                                        ),
-                                      )
-                                      : _buildUserInitials(),
-                            ),
-                            Positioned(
-                              top: -6,
-                              right: -4,
-                              child: Container(
-                                width: 22,
-                                height: 14,
-                                decoration: BoxDecoration(
-                                  color:
-                                      isChristmasSeason
-                                          ? const Color(0xFFC62828)
-                                          : Colors.transparent,
-                                  borderRadius: const BorderRadius.only(
-                                    topLeft: Radius.circular(4),
-                                    topRight: Radius.circular(10),
-                                    bottomLeft: Radius.circular(4),
-                                    bottomRight: Radius.circular(4),
-                                  ),
-                                  boxShadow:
-                                      isChristmasSeason
-                                          ? [
-                                            BoxShadow(
-                                              color: const Color(
-                                                0xFFC62828,
-                                              ).withOpacity(0.3),
-                                              blurRadius: 6,
-                                              offset: const Offset(0, 3),
-                                            ),
-                                          ]
-                                          : null,
-                                ),
-                                child:
-                                    isChristmasSeason
-                                        ? Align(
-                                          alignment: Alignment.bottomCenter,
-                                          child: Container(
-                                            height: 4,
-                                            margin: const EdgeInsets.symmetric(
-                                              horizontal: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                          ),
-                                        )
-                                        : null,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Hello, $userName',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _getCurrentDate(),
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                            if (isChristmasSeason) ...[
-                              const SizedBox(height: 4),
-                              Row(
-                                children: const [
-                                  Text(
-                                    '❄',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'Holiday spark is on',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.local_fire_department,
-                              color: Color(0xFFFF8C42),
-                              size: 20,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '$_currentStreak-day streak',
-                              style: const TextStyle(
-                                color: Color(0xFFFF8C42),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
-                            ),
-                            if (isChristmasSeason) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                width: 18,
-                                height: 14,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF00A981),
-                                  borderRadius: const BorderRadius.only(
-                                    topLeft: Radius.circular(3),
-                                    topRight: Radius.circular(8),
-                                    bottomLeft: Radius.circular(3),
-                                    bottomRight: Radius.circular(3),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(
-                                        0xFF00A981,
-                                      ).withOpacity(0.3),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Align(
-                                  alignment: Alignment.bottomCenter,
-                                  child: Container(
-                                    height: 3,
-                                    margin: const EdgeInsets.symmetric(
-                                      horizontal: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
+          // Gradient Background
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: isDark
+                    ? [const Color(0xFF1A1A1A), const Color(0xFF121212)]
+                    : [const Color(0xFFF7F9FB), const Color(0xFFFFFFFF)],
+              ),
+            ),
+          ),
+          Column(
+            children: [
+              // Green gradient extending to top of screen (including status bar)
+              Container(
+                height: MediaQuery.of(context).padding.top,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF008060), Color(0xFF00A978)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
                 ),
-
-                // Weekly Progress Card
-                Container(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    // Enhanced Header Section with gradient
+                    Container(
+                      padding: EdgeInsets.only(
+                        top: isTablet ? 20 : 16,
+                        left: horizontalPadding,
+                        right: horizontalPadding,
+                        bottom: isTablet ? 20 : 16,
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: const [
-                              Icon(
-                                Icons.trending_up,
-                                size: 20,
-                                color: Colors.black87,
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                'Weekly Progress',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            '${_weekDays.where((d) => d['hasVideo'] == true).length}/${_weekDays.length} days',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black45,
-                            ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF008060), Color(0xFF00A978)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(24),
+                          bottomRight: Radius.circular(24),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF008060).withOpacity(0.3),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children:
-                            _weekDays.map((dayData) {
-                              final DateTime date = dayData['date'] as DateTime;
-                              final String dayLetter =
-                                  dayData['dayLetter'] as String;
-                              final bool hasVideo = dayData['hasVideo'] as bool;
-                              return DayCheckmark(
-                                day: dayLetter,
-                                date: date,
-                                isCompleted: hasVideo,
-                              );
-                            }).toList(),
-                      ),
-                      const SizedBox(height: 20),
-                      if (isChristmasSeason)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF008060),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.06),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
+                      child: Row(
+                        children: [
+                          // Enhanced avatar with shadow and ring
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.15),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Container(
+                              width: isTablet ? 56 : 48,
+                              height: isTablet ? 56 : 48,
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(100),
                               ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 10,
-                                height: 10,
+                              child: Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.white.withOpacity(0.6),
-                                      blurRadius: 8,
-                                    ),
-                                  ],
+                                  borderRadius: BorderRadius.circular(100),
                                 ),
+                                child:
+                                    currentUser?.photoURL != null
+                                        ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(100),
+                                          child: Image.network(
+                                            currentUser!.photoURL!,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return _buildUserInitials();
+                                            },
+                                          ),
+                                        )
+                                        : _buildUserInitials(),
                               ),
-                              const SizedBox(width: 10),
-                              const Expanded(
-                                child: Text(
-                                  'Keep the merry streak rolling — log a memory today!',
+                            ),
+                          ),
+                          SizedBox(width: isTablet ? 14 : 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Hello, $userName 👋',
                                   style: TextStyle(
                                     color: Colors.white,
+                                    fontSize: isTablet ? 20 : 18,
                                     fontWeight: FontWeight.w700,
-                                    fontSize: 14,
+                                    letterSpacing: -0.5,
                                   ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
-                              ),
-                              const Text(
-                                '❄',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 40),
-
-                // Record Button
-                Center(
-                  child:
-                      _isCheckingRecord
-                          ? const CircularProgressIndicator(
-                            color: Color(0xFF008060),
-                          )
-                          : InkWell(
-                            onTap:
-                                _canRecordToday
-                                    ? () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => RecordScreen(),
-                                        ),
-                                      ).then((_) {
-                                        // Refresh when coming back
-                                        _checkCanRecord();
-                                        _loadWeekData();
-                                      });
-                                    }
-                                    : () {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: const Text(
-                                            'You have already recorded today! Come back tomorrow.',
-                                          ),
-                                          backgroundColor: Colors.orange,
-                                          behavior: SnackBarBehavior.floating,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                            child: Column(
-                              children: [
-                                Container(
-                                  width: 100,
-                                  height: 100,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color:
-                                          _canRecordToday
-                                              ? const Color(0xFF008060)
-                                              : Colors.grey,
-                                      width: 8,
-                                    ),
-                                  ),
-                                  child: Container(
-                                    margin: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color:
-                                          _canRecordToday
-                                              ? const Color(0xFF008060)
-                                              : Colors.grey,
-                                    ),
-                                    child:
-                                        _canRecordToday
-                                            ? null
-                                            : const Icon(
-                                              Icons.check,
-                                              color: Colors.white,
-                                              size: 36,
-                                            ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: 2),
                                 Text(
-                                  _canRecordToday
-                                      ? 'Record Now'
-                                      : 'Already Recorded',
+                                  _getCurrentDate(),
                                   style: TextStyle(
-                                    fontSize: 15,
+                                    color: Colors.white.withOpacity(0.85),
+                                    fontSize: isTablet ? 13 : 12,
                                     fontWeight: FontWeight.w500,
-                                    color:
-                                        _canRecordToday
-                                            ? const Color(0xFF008060)
-                                            : Colors.grey,
                                   ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
                               ],
                             ),
                           ),
-                ),
-
-                const SizedBox(height: 40),
-
-                // Today's Prompt Card - Matching exact design
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12.0,
-                    vertical: 12.0,
-                  ),
-                  child: TodaysPromptCard(),
-                ),
-
-                // Bottom spacing to account for bottom navigation bar
-                SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
-              ],
-            ),
-          ),
-          // Snow animation (December only)
-          if (DateTime.now().month == 12)
-            Positioned.fill(child: IgnorePointer(child: _buildSnowAnimation())),
-          // Floating Help Button with pulsing animation
-          Positioned(
-            bottom: 100,
-            right: 20,
-            child:
-                _helpButtonAnimation != null
-                    ? ScaleTransition(
-                      scale: Tween<double>(
-                        begin: 0.85,
-                        end: 1.15,
-                      ).animate(_helpButtonAnimation!),
-                      child: GestureDetector(
-                        onTap: _showGuidelineModal,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            color: const Color(0xFF008060),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF008060).withOpacity(0.8),
-                                blurRadius: 16,
-                                spreadRadius: 3,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Icon(
-                                Icons.help_outline,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                              SizedBox(width: 6),
-                              Text(
-                                'Guide',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
+                  // Enhanced streak badge
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isTablet ? 12 : 10,
+                      vertical: isTablet ? 8 : 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.local_fire_department,
+                          color: const Color(0xFFFF8C42),
+                          size: isTablet ? 18 : 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$_currentStreak ${_currentStreak == 1 ? 'day' : 'days'}',
+                          style: TextStyle(
+                            color: const Color(0xFFFF8C42),
+                            fontWeight: FontWeight.w700,
+                            fontSize: isTablet ? 14 : 12,
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Guide button in header with pulsing animation
+                  GestureDetector(
+                    onTap: _showGuidelineModal,
+                    child: AnimatedBuilder(
+                      animation: _guideButtonAnimation,
+                      builder: (context, child) {
+                        return Transform.scale(
+                          scale: _guideButtonAnimation.value,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.white.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                            child: const FaIcon(
+                              FontAwesomeIcons.circleQuestion,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                        ],
                       ),
-                    )
-                    : const SizedBox(),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Enhanced Weekly Progress Card
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                      child: Container(
+                        padding: EdgeInsets.all(isTablet ? 20 : 16),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
+                              blurRadius: 16,
+                              offset: const Offset(0, 3),
+                              spreadRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(7),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF008060).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const FaIcon(
+                                        FontAwesomeIcons.chartLine,
+                                        size: 16,
+                                        color: Color(0xFF008060),
+                                      ),
+                                    ),
+                                    SizedBox(width: isTablet ? 10 : 8),
+                                    Text(
+                                      'Weekly Progress',
+                                      style: TextStyle(
+                                        fontSize: isTablet ? 16 : 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: isDark ? const Color(0xFFE0E0E0) : const Color(0xFF1A1A1A),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF008060).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '${_weekDays.where((d) => d['hasVideo'] == true).length}/${_weekDays.length}',
+                                    style: TextStyle(
+                                      fontSize: isTablet ? 13 : 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF008060),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: isTablet ? 18 : 14),
+                            // Progress percentage bar
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: LinearProgressIndicator(
+                                value: _weekDays.isEmpty
+                                    ? 0
+                                    : _weekDays.where((d) => d['hasVideo'] == true).length / _weekDays.length,
+                                backgroundColor: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF0F4F8),
+                                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF008060)),
+                                minHeight: 5,
+                              ),
+                            ),
+                            SizedBox(height: isTablet ? 18 : 14),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children:
+                                  _weekDays.map((dayData) {
+                                    final DateTime date = dayData['date'] as DateTime;
+                                    final String dayLetter =
+                                        dayData['dayLetter'] as String;
+                                    final bool hasVideo = dayData['hasVideo'] as bool;
+                                    return DayCheckmark(
+                                      day: dayLetter,
+                                      date: date,
+                                      isCompleted: hasVideo,
+                                      isTablet: isTablet,
+                                    );
+                                  }).toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Spacer to center the record button
+                    const Spacer(),
+
+                    // Enhanced Record Button with animation - Centered
+                    Center(
+                      child: _isCheckingRecord
+                          ? const CircularProgressIndicator(
+                            color: Color(0xFF008060),
+                            strokeWidth: 3,
+                          )
+                          : AbsorbPointer(
+                            // Block all interactions when button is disabled
+                            absorbing: !_canRecordToday,
+                            child: GestureDetector(
+                              onTap: () {
+                                if (!_canRecordToday) return; // Extra safety check
+                                
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const RecordScreen(),
+                                  ),
+                                ).then((_) async {
+                                  // Immediately disable button while checking
+                                  if (mounted) {
+                                    setState(() {
+                                      _canRecordToday = false;
+                                      _isCheckingRecord = true;
+                                    });
+                                  }
+                                  
+                                  // Wait for Firestore to be ready
+                                  await Future.delayed(const Duration(milliseconds: 1000));
+                                  
+                                  // Refresh when coming back
+                                  if (mounted) {
+                                    _checkCanRecord();
+                                    _loadWeekData();
+                                    _loadStreak();
+                                  }
+                                });
+                              },
+                              child: Opacity(
+                                // Visual feedback for disabled state
+                                opacity: _canRecordToday ? 1.0 : 0.6,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: isTablet ? 110 : 95,
+                                      height: isTablet ? 110 : 95,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: (_canRecordToday
+                                                    ? const Color(0xFF008060)
+                                                    : Colors.grey)
+                                                .withOpacity(0.3),
+                                            blurRadius: 20,
+                                            spreadRadius: 0,
+                                            offset: const Offset(0, 6),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color:
+                                                _canRecordToday
+                                                    ? const Color(0xFF008060)
+                                                    : Colors.grey.shade400,
+                                            width: isTablet ? 5 : 4,
+                                          ),
+                                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                                        ),
+                                        child: Container(
+                                          margin: EdgeInsets.all(isTablet ? 10 : 9),
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            gradient:
+                                                _canRecordToday
+                                                    ? const LinearGradient(
+                                                      colors: [Color(0xFF008060), Color(0xFF00A978)],
+                                                      begin: Alignment.topLeft,
+                                                      end: Alignment.bottomRight,
+                                                    )
+                                                    : null,
+                                            color: _canRecordToday ? null : Colors.grey.shade400,
+                                          ),
+                                          child: Center(
+                                            child:
+                                              _canRecordToday
+                                                  ? FaIcon(
+                                                    FontAwesomeIcons.video,
+                                                    color: Colors.white,
+                                                    size: isTablet ? 32 : 26,
+                                                  )
+                                                  : FaIcon(
+                                                    FontAwesomeIcons.solidCircleCheck,
+                                                    color: Colors.white,
+                                                    size: isTablet ? 32 : 26,
+                                                  ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(height: isTablet ? 14 : 12),
+                                    Text(
+                                      _canRecordToday
+                                          ? 'Tap to Record'
+                                          : 'Completed Today',
+                                      style: TextStyle(
+                                        fontSize: isTablet ? 16 : 15,
+                                        fontWeight: FontWeight.w700,
+                                        color:
+                                            _canRecordToday
+                                                ? const Color(0xFF008060)
+                                                : Colors.grey.shade600,
+                                        letterSpacing: -0.3,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _canRecordToday
+                                          ? 'Capture your moment'
+                                          : 'See you tomorrow!',
+                                      style: TextStyle(
+                                        fontSize: isTablet ? 13 : 11.5,
+                                        fontWeight: FontWeight.w500,
+                                        color:
+                                            _canRecordToday
+                                                ? (isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade600)
+                                                : Colors.grey.shade500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                    ),
+
+                    // Spacer to push daily inspiration to bottom
+                    const Spacer(),
+
+                    // Enhanced Today's Prompt Card - At Bottom
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: horizontalPadding,
+                      ),
+                      child: TodaysPromptCard(isTablet: isTablet),
+                    ),
+
+                    // Bottom spacing to account for bottom navigation bar
+                    SizedBox(height: screenHeight > 700 ? 30 : 70),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      bottomNavigationBar:
-          widget.showBottomNav
-              ? BottomNavigationBar(
-                type: BottomNavigationBarType.fixed,
-                selectedItemColor: const Color(0xFF5D9F6A),
-                unselectedItemColor: Colors.black45,
-                currentIndex: 0,
-                onTap: (index) {
-                  switch (index) {
-                    case 0:
-                      // Already on Home, do nothing
-                      break;
-                    case 1:
-                      // Navigate to Calendar
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const CalendarScreen(),
-                        ),
-                      );
-                      break;
-                    case 2:
-                      // Navigate to Videos
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const VideosScreen(),
-                        ),
-                      );
-                      break;
-                    case 3:
-                      // Navigate to Profile
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const ProfilePage(),
-                        ),
-                      );
-                      break;
-                  }
-                },
-                selectedFontSize: 12,
-                unselectedFontSize: 12,
-                items: [
-                  BottomNavigationBarItem(
-                    icon: Stack(
-                      alignment: Alignment.center,
-                      clipBehavior: Clip.none,
-                      children: [
-                        if (isChristmasSeason) ...[
-                          const Text('🏠', style: TextStyle(fontSize: 20)),
-                          Positioned(
-                            top: -4,
-                            right: -4,
-                            child: Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF00A981),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(
-                                      0xFF00A981,
-                                    ).withOpacity(0.4),
-                                    blurRadius: 6,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ] else
-                          const Icon(Icons.home),
-                      ],
-                    ),
-                    label: 'Home',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Stack(
-                      alignment: Alignment.center,
-                      clipBehavior: Clip.none,
-                      children: [
-                        if (isChristmasSeason) ...[
-                          const Text('📅', style: TextStyle(fontSize: 20)),
-                          Positioned(
-                            top: -4,
-                            right: -4,
-                            child: Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF00A981),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(
-                                      0xFF00A981,
-                                    ).withOpacity(0.4),
-                                    blurRadius: 6,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ] else
-                          const Icon(Icons.calendar_today),
-                      ],
-                    ),
-                    label: 'Calendar',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Stack(
-                      alignment: Alignment.center,
-                      clipBehavior: Clip.none,
-                      children: [
-                        if (isChristmasSeason) ...[
-                          const Text('🎬', style: TextStyle(fontSize: 20)),
-                          Positioned(
-                            top: -4,
-                            right: -4,
-                            child: Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF00A981),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(
-                                      0xFF00A981,
-                                    ).withOpacity(0.4),
-                                    blurRadius: 6,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ] else
-                          const Icon(Icons.video_library),
-                      ],
-                    ),
-                    label: 'Videos',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Stack(
-                      alignment: Alignment.center,
-                      clipBehavior: Clip.none,
-                      children: [
-                        if (isChristmasSeason) ...[
-                          const Text('👤', style: TextStyle(fontSize: 20)),
-                          Positioned(
-                            top: -4,
-                            right: -4,
-                            child: Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF00A981),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(
-                                      0xFF00A981,
-                                    ).withOpacity(0.4),
-                                    blurRadius: 6,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ] else
-                          const Icon(Icons.person_outline),
-                      ],
-                    ),
-                    label: 'Profile',
-                  ),
-                ],
-              )
-              : null,
     );
   }
 }
@@ -1090,48 +1004,100 @@ class DayCheckmark extends StatelessWidget {
   final String day;
   final DateTime date;
   final bool isCompleted;
+  final bool isTablet;
 
   const DayCheckmark({
-    Key? key,
+    super.key,
     required this.day,
     required this.date,
     required this.isCompleted,
-  }) : super(key: key);
+    this.isTablet = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isToday = date.year == DateTime.now().year &&
+        date.month == DateTime.now().month &&
+        date.day == DateTime.now().day;
+
     return Column(
       children: [
         Container(
-          width: 40,
-          height: 40,
+          width: isTablet ? 46 : 38,
+          height: isTablet ? 46 : 38,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isCompleted ? const Color(0xFF008060) : Colors.grey.shade200,
+            gradient: isCompleted
+                ? const LinearGradient(
+                    colors: [Color(0xFF008060), Color(0xFF00A978)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isCompleted
+                ? null
+                : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF0F4F8)),
+            boxShadow: isCompleted
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF008060).withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : null,
+            border: isToday && !isCompleted
+                ? Border.all(
+                    color: const Color(0xFF008060).withOpacity(0.5),
+                    width: 2,
+                  )
+                : null,
           ),
           child:
               isCompleted
-                  ? const Icon(
-                    Icons.check_circle_outline,
-                    color: Colors.white,
-                    size: 20,
-                  )
-                  : null,
+                  ? const Center(
+                      child: FaIcon(
+                        FontAwesomeIcons.solidCircleCheck,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    )
+                  : isToday
+                      ? Center(
+                          child: Container(
+                            width: isTablet ? 9 : 7,
+                            height: isTablet ? 9 : 7,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Color(0xFF008060),
+                            ),
+                          ),
+                        )
+                      : null,
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 5),
         Text(
           day,
           style: TextStyle(
-            fontSize: 12,
-            color: isCompleted ? const Color(0xFF004B36) : Colors.black45,
-            fontWeight: isCompleted ? FontWeight.w600 : FontWeight.normal,
+            fontSize: isTablet ? 12 : 10.5,
+            color: isCompleted 
+                ? const Color(0xFF008060)
+                : isToday
+                    ? const Color(0xFF008060)
+                    : (isDark ? const Color(0xFFB0B0B0) : Colors.black54),
+            fontWeight: isCompleted || isToday ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
+        const SizedBox(height: 1),
         Text(
           '${date.month}/${date.day}',
           style: TextStyle(
-            fontSize: 10,
-            color: isCompleted ? const Color(0xFF2F6B55) : Colors.black38,
+            fontSize: isTablet ? 10 : 8.5,
+            color: isCompleted 
+                ? const Color(0xFF008060).withOpacity(0.7)
+                : (isDark ? const Color(0xFF757575) : Colors.black38),
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],
@@ -1140,7 +1106,9 @@ class DayCheckmark extends StatelessWidget {
 }
 
 class TodaysPromptCard extends StatefulWidget {
-  const TodaysPromptCard({Key? key}) : super(key: key);
+  final bool isTablet;
+
+  const TodaysPromptCard({super.key, this.isTablet = false});
 
   @override
   State<TodaysPromptCard> createState() => _TodaysPromptCardState();
@@ -1218,170 +1186,157 @@ class _TodaysPromptCardState extends State<TodaysPromptCard> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        gradient: isDark
+            ? const LinearGradient(
+                colors: [Color(0xFF1E1E1E), Color(0xFF2A2A2A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : const LinearGradient(
+                colors: [Color(0xFFFFFFFF), Color(0xFFF8FAF9)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Green left border
-            Container(
-              width: 4,
-              decoration: const BoxDecoration(
-                color: Color(0xFF5D9F6A),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  bottomLeft: Radius.circular(16),
-                ),
-              ),
-            ),
-            // Content
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
+        children: [
+          // Decorative circle elements
+          // Positioned(
+          //   top: -20,
+          //   right: -20,
+          //   child: Container(
+          //     width: 80,
+          //     height: 80,
+          //     decoration: BoxDecoration(
+          //       shape: BoxShape.circle,
+          //       color: const Color(0xFF008060).withOpacity(0.05),
+          //     ),
+          //   ),
+          // ),
+          // Positioned(
+          //   bottom: -25,
+          //   left: -25,
+          //   child: Container(
+          //     width: 100,
+          //     height: 100,
+          //     decoration: BoxDecoration(
+          //       shape: BoxShape.circle,
+          //       color: const Color(0xFF00A978).withOpacity(0.03),
+          //     ),
+          //   ),
+          // ),
+          // Content
+          Padding(
+            padding: EdgeInsets.all(widget.isTablet ? 24 : 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    const Text(
+                    Container(
+                      padding: const EdgeInsets.all(9),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF008060), Color(0xFF00A978)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(11),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF008060).withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: FaIcon(
+                          FontAwesomeIcons.wandMagicSparkles,
+                          color: Colors.white,
+                          size: widget.isTablet ? 16 : 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
                       "DAILY INSPIRATION",
                       style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF9E9E96),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _todayPrompt.isNotEmpty
-                          ? _todayPrompt
-                          : 'Every moment is a fresh beginning.',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF2D3E2F),
-                        height: 1.3,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Capture your moments and build your life story, one memory at a time.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF6B6B65),
-                        height: 1.5,
+                        fontSize: widget.isTablet ? 11 : 10,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF008060),
+                        letterSpacing: 1.1,
                       ),
                     ),
                   ],
                 ),
-              ),
+                SizedBox(height: widget.isTablet ? 14 : 12),
+                Text(
+                  _todayPrompt.isNotEmpty
+                      ? '"$_todayPrompt"'
+                      : '"Every moment is a fresh beginning."',
+                  style: TextStyle(
+                    fontSize: widget.isTablet ? 18 : 16,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFE0E0E0) : const Color(0xFF1A1A1A),
+                    height: 1.4,
+                    letterSpacing: -0.3,
+                  ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                SizedBox(height: widget.isTablet ? 14 : 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF008060).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(
+                      color: const Color(0xFF008060).withOpacity(0.15),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const FaIcon(
+                        FontAwesomeIcons.lightbulb,
+                        color: Color(0xFF008060),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Capture your moments and build your life story, one memory at a time.',
+                          style: TextStyle(
+                            fontSize: widget.isTablet ? 13 : 11.5,
+                            color: isDark ? const Color(0xFFB0B0B0) : const Color(0xFF666666),
+                            height: 1.4,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Snowflake dot widget that falls down with blinking animation
-class _SnowdotWidget extends StatefulWidget {
-  final double left;
-  final Duration delay;
-  final Duration animationDuration;
-
-  const _SnowdotWidget({
-    required this.left,
-    required this.delay,
-    required this.animationDuration,
-  });
-
-  @override
-  State<_SnowdotWidget> createState() => _SnowdotWidgetState();
-}
-
-class _SnowdotWidgetState extends State<_SnowdotWidget>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _position;
-  late Animation<double> _opacity;
-  bool _isInitialized = false;
-
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(widget.delay, () {
-      if (mounted) {
-        _controller = AnimationController(
-          duration: widget.animationDuration,
-          vsync: this,
-        )..repeat();
-
-        // Fall from top to bottom
-        _position = Tween<double>(
-          begin: -50,
-          end: MediaQuery.of(context).size.height + 50,
-        ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
-
-        // Gentle blink effect
-        _opacity = Tween<double>(begin: 0.6, end: 1.0).animate(
-          CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-        );
-
-        setState(() {
-          _isInitialized = true;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    if (_isInitialized) {
-      _controller.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isInitialized) return const SizedBox();
-
-    final randomSize = 4.0 + ((widget.left.toInt() % 5)).toDouble();
-
-    return AnimatedBuilder(
-      animation: Listenable.merge([_position, _opacity]),
-      builder: (context, child) {
-        return Positioned(
-          left: widget.left,
-          top: _position.value,
-          child: Opacity(opacity: _opacity.value, child: child),
-        );
-      },
-      child: Container(
-        width: randomSize,
-        height: randomSize,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withOpacity(0.95),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.white.withOpacity(0.6),
-              blurRadius: randomSize * 1.5,
-              spreadRadius: randomSize * 0.5,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

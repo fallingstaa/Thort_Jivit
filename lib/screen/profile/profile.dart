@@ -1,23 +1,132 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:provider/provider.dart';
 import 'package:thort_jivit/screen/auth/SignInScreen.dart';
+import 'package:thort_jivit/services/notification_service.dart';
+import 'package:thort_jivit/theme.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'edit_profile_screen.dart';
+import 'storage_settings_screen.dart';
+import 'favorites_screen.dart';
+import 'help_support_screen.dart';
+import 'privacy_policy_screen.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({Key? key}) : super(key: key);
+  const ProfilePage({super.key});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   bool notificationsEnabled = true;
-  bool autoSaveEnabled = true;
-  bool darkModeEnabled = false;
-  bool soundEffectsEnabled = true;
+  bool _isLoadingNotificationStatus = true;
+  String _appVersion = 'Loading...';
 
-  // Firebase user
-  final User? currentUser = FirebaseAuth.instance.currentUser;
+  // Get current user dynamically
+  User? get currentUser => FirebaseAuth.instance.currentUser;
+
+  // Notification service
+  final NotificationService _notificationService = NotificationService();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadNotificationStatus();
+    _loadAppVersion();
+    _reloadUserProfile(); // Reload user data to sync profile picture across devices
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Reload profile when app comes to foreground to sync profile picture
+    if (state == AppLifecycleState.resumed) {
+      _reloadUserProfile();
+    }
+  }
+
+
+  /// Reload user profile data from Firebase Auth to sync profile picture across devices
+  Future<void> _reloadUserProfile() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Reload user data to get latest profile picture from Firebase Auth
+        await user.reload();
+        // Force rebuild to show updated profile picture
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      print('[PROFILE] Error reloading user profile: $e');
+    }
+  }
+
+  /// Load app version from package info
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          _appVersion = '${packageInfo.version} (${packageInfo.buildNumber})';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _appVersion = '1.0.0 (1)';
+        });
+      }
+    }
+  }
+
+
+  /// Load notification status from preferences
+  Future<void> _loadNotificationStatus() async {
+    final enabled = await _notificationService.getNotificationEnabled();
+    if (mounted) {
+      setState(() {
+        notificationsEnabled = enabled;
+        _isLoadingNotificationStatus = false;
+      });
+    }
+  }
+
+  /// Toggle notification status
+  Future<void> _toggleNotifications(bool value) async {
+    setState(() {
+      notificationsEnabled = value;
+    });
+
+    // Update notification service
+    await _notificationService.setNotificationEnabled(value);
+
+    // Show feedback to user
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value
+                ? '🔔 Daily reminders enabled at 12 PM'
+                : '🔕 Daily reminders disabled',
+          ),
+          backgroundColor: value ? const Color(0xFF009966) : Colors.grey,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
 
   // Get user display name
   String get userName {
@@ -79,10 +188,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
     // Refresh profile if changes were made
     if (result == true && mounted) {
-      setState(() {
-        // Reload the current user to get updated data
-        FirebaseAuth.instance.currentUser?.reload();
-      });
+      // Reload the current user to get updated data
+      await FirebaseAuth.instance.currentUser?.reload();
+      // Force rebuild to show updated profile picture
+      if (mounted) {
+        setState(() {});
+      }
     }
   }
 
@@ -148,42 +259,35 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isChristmasSeason = DateTime.now().month == 12;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+    final horizontalPadding = isTablet ? 32.0 : 20.0;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
+      backgroundColor:
+          isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (isChristmasSeason)
-              Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: Text('⭐', style: TextStyle(fontSize: 16)),
-              ),
-            const Text(
-              'Profile',
-              style: TextStyle(
-                color: Color(0xFF009688),
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-              ),
-            ),
-            if (isChristmasSeason)
-              Padding(
-                padding: const EdgeInsets.only(left: 8.0),
-                child: Text('✨', style: TextStyle(fontSize: 16)),
-              ),
-          ],
+        title: Text(
+          'Profile',
+          style: TextStyle(
+            color: const Color(0xFF009688),
+            fontSize: isTablet ? 20 : 18,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0,
+          ),
         ),
         centerTitle: true,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(color: const Color(0xFFEEEEEE), height: 1),
+          child: Container(
+            color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFEEEEEE),
+            height: 1,
+          ),
         ),
       ),
       body: Stack(
@@ -192,19 +296,24 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 20),
+                SizedBox(height: isTablet ? 24 : 20),
 
                 // Profile Card
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      isTablet ? 28 : 24,
+                      horizontalPadding,
+                      isTablet ? 24 : 20,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withOpacity(isDark ? 0.3 : 0.04),
                           blurRadius: 10,
                           spreadRadius: 0,
                           offset: const Offset(0, 2),
@@ -219,37 +328,27 @@ class _ProfilePageState extends State<ProfilePage> {
                             Stack(
                               children: [
                                 Container(
-                                  width: 76,
-                                  height: 76,
-                                  decoration: BoxDecoration(
+                                  width: isTablet ? 92 : 76,
+                                  height: isTablet ? 92 : 76,
+                                  decoration: const BoxDecoration(
                                     shape: BoxShape.circle,
-                                    gradient:
-                                        isChristmasSeason
-                                            ? const LinearGradient(
-                                              colors: [
-                                                Color(0xFFC62828),
-                                                Color(0xFF2E7D32),
-                                              ],
-                                              begin: Alignment.topLeft,
-                                              end: Alignment.bottomRight,
-                                            )
-                                            : const LinearGradient(
-                                              colors: [
-                                                Color(0xFF8D6E63),
-                                                Color(0xFFFF8A65),
-                                                Color(0xFF81C784),
-                                                Color(0xFF4FC3F7),
-                                              ],
-                                              stops: [0.0, 0.3, 0.7, 1.0],
-                                              begin: Alignment.topLeft,
-                                              end: Alignment.bottomRight,
-                                            ),
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Color(0xFF8D6E63),
+                                        Color(0xFFFF8A65),
+                                        Color(0xFF81C784),
+                                        Color(0xFF4FC3F7),
+                                      ],
+                                      stops: [0.0, 0.3, 0.7, 1.0],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
                                   ),
                                   child:
                                       currentUser?.photoURL != null
                                           ? ClipRRect(
                                             borderRadius: BorderRadius.circular(
-                                              38,
+                                              isTablet ? 46 : 38,
                                             ),
                                             child: Image.network(
                                               currentUser!.photoURL!,
@@ -262,9 +361,10 @@ class _ProfilePageState extends State<ProfilePage> {
                                                 return Center(
                                                   child: Text(
                                                     userInitials,
-                                                    style: const TextStyle(
+                                                    style: TextStyle(
                                                       color: Colors.white,
-                                                      fontSize: 28,
+                                                      fontSize:
+                                                          isTablet ? 34 : 28,
                                                       fontWeight:
                                                           FontWeight.bold,
                                                     ),
@@ -276,9 +376,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                           : Center(
                                             child: Text(
                                               userInitials,
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 color: Colors.white,
-                                                fontSize: 28,
+                                                fontSize: isTablet ? 34 : 28,
                                                 fontWeight: FontWeight.bold,
                                               ),
                                             ),
@@ -288,21 +388,23 @@ class _ProfilePageState extends State<ProfilePage> {
                                   bottom: 0,
                                   right: 0,
                                   child: Container(
-                                    padding: const EdgeInsets.all(6),
+                                    padding: EdgeInsets.all(isTablet ? 8 : 6),
                                     decoration: const BoxDecoration(
                                       color: Color(0xFF00BFA5),
                                       shape: BoxShape.circle,
                                     ),
-                                    child: const Icon(
-                                      Icons.camera_alt,
-                                      size: 14,
-                                      color: Colors.white,
+                                    child: Center(
+                                      child: FaIcon(
+                                        FontAwesomeIcons.camera,
+                                        size: isTablet ? 14 : 12,
+                                        color: Colors.white,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(width: 14),
+                            SizedBox(width: isTablet ? 18 : 14),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -313,28 +415,36 @@ class _ProfilePageState extends State<ProfilePage> {
                                       Flexible(
                                         child: Text(
                                           userName,
-                                          style: const TextStyle(
-                                            fontSize: 19,
+                                          style: TextStyle(
+                                            fontSize: isTablet ? 22 : 19,
                                             fontWeight: FontWeight.w600,
-                                            color: Color(0xFF1A1A1A),
+                                            color:
+                                                isDark
+                                                    ? const Color(0xFFE0E0E0)
+                                                    : const Color(0xFF1A1A1A),
                                             height: 1.2,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                       const SizedBox(width: 3),
-                                      const Text(
+                                      Text(
                                         '👑',
-                                        style: TextStyle(fontSize: 16),
+                                        style: TextStyle(
+                                          fontSize: isTablet ? 18 : 16,
+                                        ),
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 5),
+                                  SizedBox(height: isTablet ? 6 : 5),
                                   Text(
                                     userEmail,
-                                    style: const TextStyle(
-                                      fontSize: 13.5,
-                                      color: Color(0xFF6B6B6B),
+                                    style: TextStyle(
+                                      fontSize: isTablet ? 15 : 13.5,
+                                      color:
+                                          isDark
+                                              ? const Color(0xFFB0B0B0)
+                                              : const Color(0xFF6B6B6B),
                                       height: 1.3,
                                     ),
                                     overflow: TextOverflow.ellipsis,
@@ -342,9 +452,12 @@ class _ProfilePageState extends State<ProfilePage> {
                                   const SizedBox(height: 1),
                                   Text(
                                     memberSince,
-                                    style: const TextStyle(
-                                      fontSize: 11.5,
-                                      color: Color(0xFF9E9E9E),
+                                    style: TextStyle(
+                                      fontSize: isTablet ? 13 : 11.5,
+                                      color:
+                                          isDark
+                                              ? const Color(0xFF909090)
+                                              : const Color(0xFF9E9E9E),
                                       height: 1.4,
                                     ),
                                   ),
@@ -353,9 +466,9 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 18),
+                        SizedBox(height: isTablet ? 22 : 18),
                         Container(
-                          height: 38,
+                          height: isTablet ? 44 : 38,
                           width: double.infinity,
                           decoration: BoxDecoration(
                             border: Border.all(
@@ -375,17 +488,17 @@ class _ProfilePageState extends State<ProfilePage> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            icon: const Icon(
-                              Icons.edit_outlined,
-                              size: 17,
+                            icon: const FaIcon(
+                              FontAwesomeIcons.penToSquare,
+                              size: 16,
                               color: Color(0xFF009688),
                             ),
-                            label: const Text(
+                            label: Text(
                               'Edit Profile',
                               style: TextStyle(
-                                fontSize: 14.5,
+                                fontSize: isTablet ? 16 : 14.5,
                                 fontWeight: FontWeight.w500,
-                                color: Color(0xFF009688),
+                                color: const Color(0xFF009688),
                               ),
                             ),
                           ),
@@ -395,175 +508,238 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
 
-                const SizedBox(height: 28),
-
-                // Privacy & Security Section
-                const Padding(
-                  padding: EdgeInsets.only(left: 20, bottom: 14),
-                  child: Text(
-                    'Privacy & Security',
-                    style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                ),
-
-                _buildSettingItem(
-                  icon: Icons.shield_outlined,
-                  iconColor: const Color(0xFF009688),
-                  title: 'Privacy Settings',
-                  subtitle: 'Control who can see your content',
-                  showArrow: true,
-                ),
-
-                const SizedBox(height: 10),
-
-                _buildSettingItem(
-                  icon: Icons.notifications_outlined,
-                  iconColor: const Color(0xFF009688),
-                  title: 'Notifications',
-                  subtitle: 'Daily recording reminders',
-                  trailing: Transform.scale(
-                    scale: 0.9,
-                    child: Switch(
-                      value: notificationsEnabled,
-                      onChanged: (value) {
-                        setState(() => notificationsEnabled = value);
-                      },
-                      activeColor: Colors.white,
-                      activeTrackColor: const Color(0xFF009966),
-                      inactiveThumbColor: Colors.white,
-                      inactiveTrackColor: const Color(0xFFE0E0E0),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 28),
+                SizedBox(height: isTablet ? 32 : 28),
 
                 // App Preferences Section
-                const Padding(
-                  padding: EdgeInsets.only(left: 20, bottom: 14),
+                Padding(
+                  padding: EdgeInsets.only(
+                    left: horizontalPadding,
+                    bottom: isTablet ? 16 : 14,
+                  ),
                   child: Text(
                     'App Preferences',
                     style: TextStyle(
-                      fontSize: 15.5,
+                      fontSize: isTablet ? 17 : 15.5,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
+                      color:
+                          isDark
+                              ? const Color(0xFFE0E0E0)
+                              : const Color(0xFF1A1A1A),
                       letterSpacing: -0.2,
                     ),
                   ),
                 ),
 
                 _buildSettingItem(
-                  icon: Icons.camera_alt_outlined,
+                  icon: FontAwesomeIcons.bell,
                   iconColor: const Color(0xFF009688),
-                  title: 'Auto-save recordings',
-                  subtitle: 'Automatically save after recording',
-                  trailing: Transform.scale(
-                    scale: 0.9,
-                    child: Switch(
-                      value: autoSaveEnabled,
-                      onChanged: (value) {
-                        setState(() => autoSaveEnabled = value);
-                      },
-                      activeColor: Colors.white,
-                      activeTrackColor: const Color(0xFF009966),
-                      inactiveThumbColor: Colors.white,
-                      inactiveTrackColor: const Color(0xFFE0E0E0),
-                    ),
-                  ),
+                  title: 'Notifications',
+                  subtitle: 'Daily recording reminders at 12 PM',
+                  isTablet: isTablet,
+                  horizontalPadding: horizontalPadding,
+                  trailing:
+                      _isLoadingNotificationStatus
+                          ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Color(0xFF009966),
+                              ),
+                            ),
+                          )
+                          : Transform.scale(
+                            scale: isTablet ? 1.0 : 0.9,
+                            child: Switch(
+                              value: notificationsEnabled,
+                              onChanged: _toggleNotifications,
+                              activeThumbColor: Colors.white,
+                              activeTrackColor: const Color(0xFF009966),
+                              inactiveThumbColor: Colors.white,
+                              inactiveTrackColor: const Color(0xFFE0E0E0),
+                            ),
+                          ),
                 ),
 
-                const SizedBox(height: 10),
+                SizedBox(height: isTablet ? 12 : 10),
 
                 _buildSettingItem(
-                  icon: Icons.nightlight_round_outlined,
-                  iconColor: const Color(0xFF009688),
-                  title: 'Dark Mode',
-                  subtitle: 'Switch to dark theme',
-                  trailing: Transform.scale(
-                    scale: 0.9,
-                    child: Switch(
-                      value: darkModeEnabled,
-                      onChanged: (value) {
-                        setState(() => darkModeEnabled = value);
-                      },
-                      activeColor: Colors.white,
-                      activeTrackColor: const Color(0xFF009966),
-                      inactiveThumbColor: Colors.white,
-                      inactiveTrackColor: const Color(0xFFE0E0E0),
-                    ),
+                  icon: FontAwesomeIcons.solidHeart,
+                  iconColor: const Color(0xFFE53935),
+                  title: 'Favorite Videos',
+                  subtitle: 'View your favorite videos',
+                  isTablet: isTablet,
+                  horizontalPadding: horizontalPadding,
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: Color(0xFF999999),
                   ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const FavoritesScreen(),
+                      ),
+                    );
+                  },
                 ),
 
-                const SizedBox(height: 10),
+                SizedBox(height: isTablet ? 12 : 10),
 
                 _buildSettingItem(
-                  icon: Icons.volume_up_outlined,
+                  icon: FontAwesomeIcons.database,
                   iconColor: const Color(0xFF009688),
-                  title: 'Sound Effects',
-                  subtitle: 'Play sounds for interactions',
-                  trailing: Transform.scale(
-                    scale: 0.9,
-                    child: Switch(
-                      value: soundEffectsEnabled,
-                      onChanged: (value) {
-                        setState(() => soundEffectsEnabled = value);
-                      },
-                      activeColor: Colors.white,
-                      activeTrackColor: const Color(0xFF009966),
-                      inactiveThumbColor: Colors.white,
-                      inactiveTrackColor: const Color(0xFFE0E0E0),
-                    ),
+                  title: 'Storage Settings',
+                  subtitle: 'Manage video storage and compression',
+                  isTablet: isTablet,
+                  horizontalPadding: horizontalPadding,
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: Color(0xFF999999),
                   ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const StorageSettingsScreen(),
+                      ),
+                    );
+                  },
                 ),
 
-                const SizedBox(height: 28),
+                SizedBox(height: isTablet ? 12 : 10),
+
+                Consumer<ThemeProvider>(
+                  builder: (context, themeProvider, _) {
+                    return _buildSettingItem(
+                      icon:
+                          themeProvider.isDarkMode
+                              ? FontAwesomeIcons.solidMoon
+                              : FontAwesomeIcons.moon,
+                      iconColor: const Color(0xFF009688),
+                      title: 'Dark Mode',
+                      subtitle:
+                          themeProvider.isDarkMode
+                              ? 'Using dark theme'
+                              : 'Switch to dark theme',
+                      isTablet: isTablet,
+                      horizontalPadding: horizontalPadding,
+                      trailing: Transform.scale(
+                        scale: isTablet ? 1.0 : 0.9,
+                        child: Switch(
+                          value: themeProvider.isDarkMode,
+                          onChanged: (value) async {
+                            // Show loading snackbar
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  value
+                                      ? '🌙 Switching to dark mode...'
+                                      : '☀️ Switching to light mode...',
+                                ),
+                                duration: const Duration(milliseconds: 800),
+                                backgroundColor: const Color(0xFF009966),
+                              ),
+                            );
+
+                            // Toggle theme
+                            await themeProvider.setThemeMode(
+                              value ? ThemeMode.dark : ThemeMode.light,
+                            );
+                          },
+                          activeThumbColor: Colors.white,
+                          activeTrackColor: const Color(0xFF009966),
+                          inactiveThumbColor: Colors.white,
+                          inactiveTrackColor: const Color(0xFFE0E0E0),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+                SizedBox(height: isTablet ? 32 : 28),
 
                 // Support Section
-                const Padding(
-                  padding: EdgeInsets.only(left: 20, bottom: 14),
+                Padding(
+                  padding: EdgeInsets.only(
+                    left: horizontalPadding,
+                    bottom: isTablet ? 16 : 14,
+                  ),
                   child: Text(
                     'Support',
                     style: TextStyle(
-                      fontSize: 15.5,
+                      fontSize: isTablet ? 17 : 15.5,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
+                      color:
+                          isDark
+                              ? const Color(0xFFE0E0E0)
+                              : const Color(0xFF1A1A1A),
                       letterSpacing: -0.2,
                     ),
                   ),
                 ),
 
                 _buildSettingItem(
-                  icon: Icons.help_outline_rounded,
+                  icon: FontAwesomeIcons.circleQuestion,
                   iconColor: const Color(0xFF009688),
                   title: 'Help & Support',
                   subtitle: 'FAQs and contact support',
                   showArrow: true,
+                  isTablet: isTablet,
+                  horizontalPadding: horizontalPadding,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const HelpSupportScreen(),
+                      ),
+                    );
+                  },
                 ),
 
-                const SizedBox(height: 10),
+                SizedBox(height: isTablet ? 12 : 10),
 
                 _buildSettingItem(
-                  icon: Icons.smartphone_outlined,
+                  icon: FontAwesomeIcons.shield,
                   iconColor: const Color(0xFF009688),
-                  title: 'App Version',
-                  subtitle: '1.2.3 (Latest)',
+                  title: 'Privacy Policy',
+                  subtitle: 'View our privacy policy',
                   showArrow: true,
+                  isTablet: isTablet,
+                  horizontalPadding: horizontalPadding,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PrivacyPolicyScreen(),
+                      ),
+                    );
+                  },
                 ),
 
-                const SizedBox(height: 24),
+                SizedBox(height: isTablet ? 12 : 10),
+
+                _buildSettingItem(
+                  icon: FontAwesomeIcons.mobileScreen,
+                  iconColor: const Color(0xFF009688),
+                  title: 'App Version',
+                  subtitle: _appVersion,
+                  isTablet: isTablet,
+                  horizontalPadding: horizontalPadding,
+                ),
+
+                SizedBox(height: isTablet ? 28 : 24),
 
                 // Sign Out Button
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                   child: Container(
-                    height: 56,
+                    height: isTablet ? 62 : 56,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: const Color(0xFFE53935).withOpacity(0.3),
@@ -571,7 +747,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withOpacity(isDark ? 0.3 : 0.04),
                           blurRadius: 10,
                           spreadRadius: 0,
                           offset: const Offset(0, 2),
@@ -586,19 +762,19 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: Center(
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
-                            children: const [
-                              Icon(
-                                Icons.logout,
-                                size: 19,
+                            children: [
+                              const FaIcon(
+                                FontAwesomeIcons.rightFromBracket,
+                                size: 18,
                                 color: Color(0xFFE53935),
                               ),
-                              SizedBox(width: 10),
+                              SizedBox(width: isTablet ? 12 : 10),
                               Text(
                                 'Sign Out',
                                 style: TextStyle(
-                                  fontSize: 14.5,
+                                  fontSize: isTablet ? 16.5 : 14.5,
                                   fontWeight: FontWeight.w500,
-                                  color: Color(0xFFE53935),
+                                  color: const Color(0xFFE53935),
                                   letterSpacing: 0,
                                 ),
                               ),
@@ -610,17 +786,14 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
 
-                const SizedBox(height: 100), // Add space for bottom nav bar
+                SizedBox(height: isTablet ? 120 : 100),
               ],
             ),
           ),
-            // Snow animation removed from Profile screen (keep only on Home)
         ],
       ),
     );
   }
-
-  // Snow animation removed from Profile screen
 
   Widget _buildSettingItem({
     required IconData icon,
@@ -629,17 +802,22 @@ class _ProfilePageState extends State<ProfilePage> {
     required String subtitle,
     Widget? trailing,
     bool showArrow = false,
+    bool isTablet = false,
+    double horizontalPadding = 20.0,
+    VoidCallback? onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 84),
+        constraints: BoxConstraints(minHeight: isTablet ? 96 : 84),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withOpacity(isDark ? 0.3 : 0.04),
               blurRadius: 10,
               spreadRadius: 0,
               offset: const Offset(0, 2),
@@ -649,23 +827,32 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: showArrow ? () {} : null,
+            onTap: onTap ?? (showArrow ? () {} : null),
             borderRadius: BorderRadius.circular(20),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              padding: EdgeInsets.symmetric(
+                horizontal: isTablet ? 22 : 18,
+                vertical: isTablet ? 20 : 18,
+              ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: isTablet ? 56 : 48,
+                    height: isTablet ? 56 : 48,
                     decoration: const BoxDecoration(
                       color: Color(0xFFD0FAE5),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(icon, color: Color(0xFF009966), size: 24),
+                    child: Center(
+                      child: FaIcon(
+                        icon,
+                        color: const Color(0xFF009966),
+                        size: isTablet ? 22 : 20,
+                      ),
+                    ),
                   ),
-                  const SizedBox(width: 16),
+                  SizedBox(width: isTablet ? 18 : 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -673,21 +860,27 @@ class _ProfilePageState extends State<ProfilePage> {
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(
-                            fontSize: 14.5,
+                          style: TextStyle(
+                            fontSize: isTablet ? 16 : 14.5,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF1A1A1A),
+                            color:
+                                isDark
+                                    ? const Color(0xFFE0E0E0)
+                                    : const Color(0xFF1A1A1A),
                             height: 1.2,
                           ),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                         ),
-                        const SizedBox(height: 3),
+                        SizedBox(height: isTablet ? 4 : 3),
                         Text(
                           subtitle,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            color: Color(0xFF6B6B6B),
+                          style: TextStyle(
+                            fontSize: isTablet ? 14 : 12.5,
+                            color:
+                                isDark
+                                    ? const Color(0xFFB0B0B0)
+                                    : const Color(0xFF6B6B6B),
                             height: 1.3,
                           ),
                           overflow: TextOverflow.ellipsis,
@@ -702,111 +895,18 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: trailing,
                     )
                   else if (showArrow)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 8),
-                      child: Icon(
-                        Icons.chevron_right,
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: const FaIcon(
+                        FontAwesomeIcons.chevronRight,
                         color: Color(0xFFBDBDBD),
-                        size: 26,
+                        size: 20,
                       ),
                     ),
                 ],
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Snowflake dot widget that falls down with blinking animation
-class _SnowdotWidget extends StatefulWidget {
-  final double left;
-  final Duration delay;
-  final Duration animationDuration;
-
-  const _SnowdotWidget({
-    required this.left,
-    required this.delay,
-    required this.animationDuration,
-  });
-
-  @override
-  State<_SnowdotWidget> createState() => _SnowdotWidgetState();
-}
-
-class _SnowdotWidgetState extends State<_SnowdotWidget>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _position;
-  late Animation<double> _opacity;
-  bool _isInitialized = false;
-
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(widget.delay, () {
-      if (mounted) {
-        _controller = AnimationController(
-          duration: widget.animationDuration,
-          vsync: this,
-        )..repeat();
-
-        // Fall from top to bottom
-        _position = Tween<double>(
-          begin: -50,
-          end: MediaQuery.of(context).size.height + 50,
-        ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
-
-        // Gentle blink effect
-        _opacity = Tween<double>(begin: 0.6, end: 1.0).animate(
-          CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-        );
-
-        setState(() {
-          _isInitialized = true;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    if (_isInitialized) {
-      _controller.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isInitialized) return const SizedBox();
-
-    final randomSize = 4.0 + ((widget.left.toInt() % 5)).toDouble();
-
-    return AnimatedBuilder(
-      animation: Listenable.merge([_position, _opacity]),
-      builder: (context, child) {
-        return Positioned(
-          left: widget.left,
-          top: _position.value,
-          child: Opacity(opacity: _opacity.value, child: child),
-        );
-      },
-      child: Container(
-        width: randomSize,
-        height: randomSize,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withOpacity(0.95),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.white.withOpacity(0.6),
-              blurRadius: randomSize * 1.5,
-              spreadRadius: randomSize * 0.5,
-            ),
-          ],
         ),
       ),
     );

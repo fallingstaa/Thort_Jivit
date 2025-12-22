@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'dart:io';
 
 class VideoPlayerScreen extends StatefulWidget {
   final String videoUrl;
@@ -8,12 +9,12 @@ class VideoPlayerScreen extends StatefulWidget {
   final String date;
 
   const VideoPlayerScreen({
-    Key? key,
+    super.key,
     required this.videoUrl,
     required this.emoji,
     required this.description,
     required this.date,
-  }) : super(key: key);
+  });
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
@@ -32,9 +33,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _initializeVideo() async {
     try {
-      _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.videoUrl),
-      );
+      // Check if it's a local file path or network URL
+      if (widget.videoUrl.startsWith('http://') || widget.videoUrl.startsWith('https://')) {
+        // Network URL
+        _controller = VideoPlayerController.networkUrl(
+          Uri.parse(widget.videoUrl),
+        );
+      } else {
+        // Local file path
+        _controller = VideoPlayerController.file(
+          File(widget.videoUrl),
+        );
+      }
+      
       await _controller!.initialize();
       setState(() {
         _isInitialized = true;

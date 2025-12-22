@@ -10,7 +10,7 @@ class CalendarScreen extends StatefulWidget {
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   final FirestoreService _firestoreService = FirestoreService();
   int? _selectedDay;
   bool _isSubmitting = false;
@@ -20,8 +20,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
   int _currentStreak = 0;
 
   @override
+  bool get wantKeepAlive => true; // Keep state alive in IndexedStack
+
+  @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadRecordedDays();
+    _loadStreak();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Reload data when app resumes
+    if (state == AppLifecycleState.resumed) {
+      _loadRecordedDays();
+      _loadStreak();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload data when widget becomes visible
+    // This helps when user records video and comes back to calendar
     _loadRecordedDays();
     _loadStreak();
   }
@@ -46,155 +74,97 @@ class _CalendarScreenState extends State<CalendarScreen> {
     });
   }
 
+  @override
   Widget build(BuildContext context) {
-    final bool isChristmasSeason = DateTime.now().month == 12;
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+    final horizontalPadding = isTablet ? 32.0 : 12.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Material(
-      color: Colors.transparent,
-      child: SafeArea(
-        bottom: false,
-        child: Stack(
-          children: [
-            Container(
-              color: const Color(0xFFF0F4F8),
-              child: Column(
-                children: [
-                  _buildAppBarWidget(),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0,
-                          vertical: 12.0,
-                        ),
-                        child: Column(
-                          children: [
-                            if (isChristmasSeason)
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 12,
-                                ),
-                                margin: const EdgeInsets.only(bottom: 10),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF00A981),
-                                  borderRadius: BorderRadius.circular(14),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.08),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  children: const [
-                                    Text(
-                                      '❄',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                    SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        'December magic: keep the streak glowing!',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      '❄',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            _buildMonthSelector(),
-                            const SizedBox(height: 12),
-                            _buildCalendarGrid(),
-                            const SizedBox(height: 24),
-                            _buildStreakCard(),
-                            const SizedBox(height: 12),
-                            _buildAddRecordingButton(),
-                            const SizedBox(height: 80),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-                // Snow animation removed from Calendar screen (keep only on Home)
-          ],
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
+      appBar: AppBar(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        title: Text(
+          'Calendar',
+          style: TextStyle(
+            color: const Color(0xFF009688),
+            fontSize: isTablet ? 20 : 18,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0,
+          ),
+        ),
+        centerTitle: true,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFEEEEEE),
+            height: 1,
+          ),
+        ),
+      ),
+      body: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: isTablet ? 16.0 : 8.0,
+          ),
+          child: Column(
+            children: [
+              _buildMonthSelector(isTablet, isDark),
+              SizedBox(height: isTablet ? 16 : 10),
+              _buildCalendarGrid(isTablet, isDark),
+              SizedBox(height: isTablet ? 20 : 14),
+              _buildStreakCard(isTablet, isDark),
+              SizedBox(height: isTablet ? 16 : 12),
+              _buildAddRecordingButton(isTablet),
+              SizedBox(height: isTablet ? 80 : 60),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildAppBarWidget() {
-    final bool isChristmasSeason = DateTime.now().month == 12;
+  Widget _buildMonthSelector(bool isTablet, bool isDark) {
     return Container(
-      color: Colors.white,
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            height: 56,
-            child: Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (isChristmasSeason)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: Text('❄', style: TextStyle(fontSize: 16)),
-                    ),
-                  Text(
-                    'Calendar',
-                    style: TextStyle(
-                      color: const Color(0xFF00A981),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                  if (isChristmasSeason)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: Text('🎄', style: TextStyle(fontSize: 16)),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          Container(color: Colors.grey[300], height: 1),
-        ],
+      padding: EdgeInsets.symmetric(
+        horizontal: isTablet ? 20 : 12,
+        vertical: isTablet ? 12 : 8,
       ),
-    );
-  }
-
-  Widget _buildMonthSelector() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF009688),
+            const Color(0xFF00A978),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF009688).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(
-            icon: const Icon(Icons.chevron_left, color: Colors.black54),
+            icon: const Icon(
+              Icons.chevron_left,
+              color: Colors.white,
+            ),
+            iconSize: isTablet ? 28 : 22,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
             onPressed: () {
               setState(() {
                 _displayed = DateTime(_displayed.year, _displayed.month - 1);
@@ -203,16 +173,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
               _loadRecordedDays();
             },
           ),
-          Text(
-            '${_monthName(_displayed.month)} ${_displayed.year}',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
+          Flexible(
+            child: Text(
+              '${_monthName(_displayed.month)} ${_displayed.year}',
+              style: TextStyle(
+                fontSize: isTablet ? 20 : 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                letterSpacing: 0.5,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.chevron_right, color: Colors.black54),
+            icon: const Icon(
+              Icons.chevron_right,
+              color: Colors.white,
+            ),
+            iconSize: isTablet ? 28 : 22,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
             onPressed: () {
               setState(() {
                 _displayed = DateTime(_displayed.year, _displayed.month + 1);
@@ -244,120 +226,64 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return names[m - 1];
   }
 
-  Widget _buildStreakCard() {
+  Widget _buildCalendarGrid(bool isTablet, bool isDark) {
+    final List<String> weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    final firstOfMonth = DateTime(_displayed.year, _displayed.month, 1);
+    final int firstDayOffset = firstOfMonth.weekday % 7;
+    final int daysInMonth = DateTime(_displayed.year, _displayed.month + 1, 0).day;
+
     return Container(
-      padding: const EdgeInsets.all(16.0),
+      padding: EdgeInsets.all(isTablet ? 24.0 : 12.0),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
           ),
         ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.local_fire_department,
-                color: Color(0xFFFF8C42),
-                size: 28,
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Current Streak',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.black54,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$_currentStreak day${_currentStreak == 1 ? "" : "s"}',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF00A981),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF8C42).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Text(
-              '🔥 Keep it up!',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFFF8C42),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCalendarGrid() {
-    final List<String> weekDays = [
-      'Sun',
-      'Mon',
-      'Tue',
-      'Wed',
-      'Thu',
-      'Fri',
-      'Sat',
-    ];
-    final firstOfMonth = DateTime(_displayed.year, _displayed.month, 1);
-    final int firstDayOffset = firstOfMonth.weekday % 7; // Sunday=0
-    final int daysInMonth =
-        DateTime(_displayed.year, _displayed.month + 1, 0).day;
-
-    return Container(
-      padding: const EdgeInsets.all(12.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children:
-                weekDays
-                    .map(
-                      (day) => Text(
-                        day,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontWeight: FontWeight.w500,
-                        ),
+          // Weekday headers
+          Padding(
+            padding: EdgeInsets.only(
+              top: isTablet ? 8 : 4,
+              bottom: isTablet ? 16 : 10,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: weekDays.map((day) {
+                return Expanded(
+                  child: Center(
+                    child: Text(
+                      day,
+                      style: TextStyle(
+                        color: isDark 
+                            ? const Color(0xFF009688).withOpacity(0.9)
+                            : const Color(0xFF009688),
+                        fontWeight: FontWeight.w700,
+                        fontSize: isTablet ? 14 : 11,
+                        letterSpacing: 0.5,
                       ),
-                    )
-                    .toList(),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
           ),
-          const SizedBox(height: 12),
+          // Calendar grid
           GridView.builder(
             physics: const NeverScrollableScrollPhysics(),
             shrinkWrap: true,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
               childAspectRatio: 1.0,
+              mainAxisSpacing: isTablet ? 12 : 4,
+              crossAxisSpacing: isTablet ? 12 : 4,
             ),
             itemCount: daysInMonth + firstDayOffset,
             itemBuilder: (context, index) {
@@ -365,7 +291,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 return const SizedBox.shrink();
               }
               final int day = index - firstDayOffset + 1;
-              return _buildCalendarDay(day: day, emoji: _recordedDays[day]);
+              return _buildCalendarDay(
+                day: day,
+                emoji: _recordedDays[day],
+                isTablet: isTablet,
+                isDark: isDark,
+              );
             },
           ),
         ],
@@ -373,14 +304,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _buildCalendarDay({required int day, String? emoji}) {
+  Widget _buildCalendarDay({
+    required int day,
+    String? emoji,
+    bool isTablet = false,
+    bool isDark = false,
+  }) {
     final bool isRecorded = emoji != null && emoji.isNotEmpty;
     final bool isSelected = _selectedDay == day;
     final now = DateTime.now();
-    final bool isToday =
-        now.year == _displayed.year &&
+    final bool isToday = now.year == _displayed.year &&
         now.month == _displayed.month &&
         now.day == day;
+
     return GestureDetector(
       onTap: () {
         setState(() {
@@ -388,60 +324,188 @@ class _CalendarScreenState extends State<CalendarScreen> {
           _isSelectedAllowed = false;
         });
 
-        // Check whether this date is allowed for upload
         final selectedDate = DateTime(_displayed.year, _displayed.month, day);
         _firestoreService.canUploadForDate(selectedDate).then((allowed) {
           if (mounted) setState(() => _isSelectedAllowed = allowed);
         });
       },
-      child: Container(
-        margin: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: isRecorded ? const Color(0xFF00A981) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border:
-              isSelected && !isRecorded
-                  ? Border.all(color: const Color(0xFF00A981), width: 2)
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            color: isRecorded
+                ? const Color(0xFF009688)
+                : (isSelected
+                    ? const Color(0xFF009688).withOpacity(0.12)
+                    : (isToday
+                        ? isDark 
+                            ? const Color(0xFF009688).withOpacity(0.15)
+                            : const Color(0xFF009688).withOpacity(0.08)
+                        : Colors.transparent)),
+            borderRadius: BorderRadius.circular(isTablet ? 12 : 8),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF009688)
                   : (isToday
-                      ? Border.all(
-                        color: Colors.blueAccent.withOpacity(0.6),
-                        width: 2,
-                      )
-                      : null),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Text(
-              '$day',
-              style: TextStyle(
-                color: isRecorded ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.w600,
-              ),
+                      ? const Color(0xFF009688).withOpacity(0.4)
+                      : Colors.transparent),
+              width: isSelected ? (isTablet ? 2.5 : 2) : (isToday ? (isTablet ? 2 : 1.5) : 0),
             ),
-            if (isRecorded)
-              Positioned(
-                top: 2,
-                right: 2,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.15),
-                    shape: BoxShape.circle,
+            boxShadow: isRecorded
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF009688).withOpacity(0.25),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(isTablet ? 4.0 : 2.0),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Emoji as background (behind the date)
+                if (isRecorded && emoji.isNotEmpty)
+                  Positioned.fill(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Opacity(
+                        opacity: 0.6,
+                        child: Text(
+                          emoji,
+                          style: TextStyle(
+                            fontSize: isTablet ? 32 : 24,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  child: Text(emoji, style: const TextStyle(fontSize: 12)),
+                // Date number on top
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '$day',
+                    style: TextStyle(
+                      color: isRecorded
+                          ? Colors.white
+                          : (isSelected || isToday
+                              ? const Color(0xFF009688)
+                              : (isDark
+                                  ? const Color(0xFFE0E0E0)
+                                  : const Color(0xFF424242))),
+                      fontWeight: isRecorded
+                          ? FontWeight.w700
+                          : (isToday || isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w500),
+                      fontSize: isTablet ? 15 : 12,
+                    ),
+                  ),
                 ),
-              ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildAddRecordingButton() {
-    // Determine if the button should be enabled
+  Widget _buildStreakCard(bool isTablet, bool isDark) {
+    return Container(
+      padding: EdgeInsets.all(isTablet ? 20.0 : 16.0),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFFF6B35),
+            const Color(0xFFFF8C42),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFF8C42).withOpacity(0.4),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(
+            child: Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(isTablet ? 12 : 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.local_fire_department,
+                    color: Colors.white,
+                    size: isTablet ? 32 : 28,
+                  ),
+                ),
+                SizedBox(width: isTablet ? 16 : 14),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Current Streak',
+                        style: TextStyle(
+                          fontSize: isTablet ? 16 : 14,
+                          color: Colors.white.withOpacity(0.9),
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '$_currentStreak day${_currentStreak == 1 ? "" : "s"}',
+                        style: TextStyle(
+                          fontSize: isTablet ? 32 : 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          height: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: isTablet ? 20 : 16,
+              vertical: isTablet ? 12 : 10,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              '🔥',
+              style: TextStyle(
+                fontSize: isTablet ? 32 : 28,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddRecordingButton(bool isTablet) {
     final bool hasSelection = _selectedDay != null;
-    // Use fetched recorded days for the displayed month
     final bool selectedIsRecorded =
         hasSelection && _recordedDays.containsKey(_selectedDay);
     final bool enabled =
@@ -450,28 +514,62 @@ class _CalendarScreenState extends State<CalendarScreen> {
         !_isSubmitting &&
         _isSelectedAllowed;
 
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: enabled ? _onAddMissingRecordingPressed : null,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: Text(
-          selectedIsRecorded
-              ? 'Already Recorded'
-              : (_isSelectedAllowed
-                  ? 'Add Missed Recording'
-                  : 'Date Not Allowed'),
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+    String buttonText;
+    IconData buttonIcon;
+    
+    if (selectedIsRecorded) {
+      buttonText = 'Already Recorded';
+      buttonIcon = Icons.check_circle;
+    } else if (_isSelectedAllowed) {
+      buttonText = 'Add Missed Recording';
+      buttonIcon = Icons.add_circle_outline;
+    } else {
+      buttonText = hasSelection ? 'Date Not Allowed' : 'Select a Date';
+      buttonIcon = Icons.block;
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: enabled
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF009688).withOpacity(0.4),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : null,
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: enabled ? _onAddMissingRecordingPressed : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: enabled 
+                ? const Color(0xFF009688) 
+                : Colors.grey.shade400,
+            foregroundColor: Colors.white,
+            padding: EdgeInsets.symmetric(vertical: isTablet ? 18 : 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            elevation: 0,
           ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: enabled ? const Color(0xFF00A981) : Colors.grey,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(buttonIcon, size: isTablet ? 24 : 22),
+              const SizedBox(width: 12),
+              Text(
+                buttonText,
+                style: TextStyle(
+                  fontSize: isTablet ? 18 : 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -493,76 +591,237 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
         return StatefulBuilder(
           builder: (context, setState) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Add Missing Record',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF008060).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.upload_file,
+                            color: Color(0xFF008060),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Add Missing Recording',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed:
-                          isUploading
+                    const SizedBox(height: 24),
+                    
+                    // Video file picker
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: pickedFile != null 
+                              ? const Color(0xFF008060) 
+                              : (isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300),
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: isUploading
                               ? null
                               : () async {
-                                final result = await FilePicker.platform
-                                    .pickFiles(
-                                      type: FileType.video,
-                                      // On web we need bytes because path is null
-                                      withData: true,
-                                    );
-                                if (result != null && result.files.isNotEmpty) {
-                                  setState(() {
-                                    pickedFile = result.files.first;
-                                  });
-                                }
-                              },
-                      icon: const Icon(Icons.attach_file),
-                      label: const Text('Pick Video File'),
+                                  final result = await FilePicker.platform
+                                      .pickFiles(
+                                        type: FileType.video,
+                                        withData: true,
+                                      );
+                                  if (result != null && result.files.isNotEmpty) {
+                                    setState(() {
+                                      pickedFile = result.files.first;
+                                    });
+                                  }
+                                },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  pickedFile != null 
+                                      ? Icons.video_file 
+                                      : Icons.video_library_outlined,
+                                  color: pickedFile != null 
+                                      ? const Color(0xFF008060) 
+                                      : Colors.grey,
+                                  size: 32,
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        pickedFile != null 
+                                            ? 'Video Selected' 
+                                            : 'Select Video File',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark 
+                                              ? const Color(0xFFE0E0E0) 
+                                              : Colors.black87,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        pickedFile != null 
+                                            ? pickedFile!.name 
+                                            : 'Tap to choose a video',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: isDark 
+                                              ? const Color(0xFFB0B0B0) 
+                                              : Colors.grey.shade600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right,
+                                  color: Colors.grey.shade400,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                    if (pickedFile != null) ...[
-                      const SizedBox(height: 8),
-                      Text('Selected: ${pickedFile!.name}'),
-                    ],
-                    const SizedBox(height: 12),
+                    
+                    const SizedBox(height: 20),
+                    
+                    // Optional text note
                     TextField(
                       enabled: !isUploading,
-                      decoration: const InputDecoration(
-                        labelText: 'Text note (optional)',
+                      decoration: InputDecoration(
+                        labelText: 'Add a note (optional)',
+                        hintText: 'What happened today?',
+                        prefixIcon: const Icon(Icons.edit_note),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF008060),
+                            width: 2,
+                          ),
+                        ),
                       ),
+                      maxLines: 2,
                       onChanged: (v) => textNote = v,
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      children:
-                          ['😊', '😢', '😡', '😰', '😌'].map((e) {
-                            final isSel = selectedEmoji == e;
-                            return ChoiceChip(
-                              label: Text(
-                                e,
-                                style: const TextStyle(fontSize: 18),
+                    
+                    const SizedBox(height: 20),
+                    
+                    // Optional mood emoji - collapsed by default
+                    Theme(
+                      data: Theme.of(context).copyWith(
+                        dividerColor: Colors.transparent,
+                      ),
+                      child: ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        title: Row(
+                          children: [
+                            Icon(
+                              selectedEmoji.isEmpty 
+                                  ? Icons.emoji_emotions_outlined 
+                                  : Icons.emoji_emotions,
+                              color: const Color(0xFF008060),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              selectedEmoji.isEmpty 
+                                  ? 'Add mood (optional)' 
+                                  : 'Mood: $selectedEmoji',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
                               ),
-                              selected: isSel,
-                              onSelected:
-                                  isUploading
+                            ),
+                          ],
+                        ),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8, bottom: 12),
+                            child: Wrap(
+                              spacing: 12,
+                              runSpacing: 8,
+                              children: ['😊', '😢', '😡', '😰', '😌', '🤩', '😴', '🥳'].map((e) {
+                                final isSel = selectedEmoji == e;
+                                return InkWell(
+                                  onTap: isUploading
                                       ? null
-                                      : (_) =>
-                                          setState(() => selectedEmoji = e),
-                            );
-                          }).toList(),
+                                      : () => setState(() {
+                                            selectedEmoji = isSel ? '' : e;
+                                          }),
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: isSel
+                                          ? const Color(0xFF008060).withOpacity(0.15)
+                                          : (isDark 
+                                              ? const Color(0xFF2A2A2A) 
+                                              : Colors.grey.shade100),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: isSel
+                                            ? const Color(0xFF008060)
+                                            : Colors.transparent,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      e,
+                                      style: const TextStyle(fontSize: 24),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 16),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Upload button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -650,7 +909,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     // show success
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text('Upload successful'),
+                                        content: Text('✓ Upload successful'),
+                                        backgroundColor: Color(0xFF008060),
                                       ),
                                     );
 
@@ -660,6 +920,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text('Upload failed: $e'),
+                                        backgroundColor: Colors.red,
                                       ),
                                     );
                                   } finally {
@@ -671,16 +932,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     } catch (_) {}
                                   }
                                 },
-                        child:
-                            isUploading
-                                ? const SizedBox(
-                                  height: 18,
-                                  width: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF008060),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: isUploading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.cloud_upload_outlined, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Upload Recording',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                )
-                                : const Text('Submit Record'),
+                                ],
+                              ),
                       ),
                     ),
                   ],
@@ -812,99 +1095,5 @@ class _CalendarScreenState extends State<CalendarScreen> {
       });
     }
   }
-
-  // Snow animation removed from Calendar screen
 }
 
-/// Snowflake dot widget that falls down with blinking animation
-class _SnowdotWidget extends StatefulWidget {
-  final double left;
-  final Duration delay;
-  final Duration animationDuration;
-
-  const _SnowdotWidget({
-    required this.left,
-    required this.delay,
-    required this.animationDuration,
-  });
-
-  @override
-  State<_SnowdotWidget> createState() => _SnowdotWidgetState();
-}
-
-class _SnowdotWidgetState extends State<_SnowdotWidget>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _position;
-  late Animation<double> _opacity;
-  bool _isInitialized = false;
-
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(widget.delay, () {
-      if (mounted) {
-        _controller = AnimationController(
-          duration: widget.animationDuration,
-          vsync: this,
-        )..repeat();
-
-        // Fall from top to bottom
-        _position = Tween<double>(
-          begin: -50,
-          end: MediaQuery.of(context).size.height + 50,
-        ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
-
-        // Gentle blink effect
-        _opacity = Tween<double>(begin: 0.6, end: 1.0).animate(
-          CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-        );
-
-        setState(() {
-          _isInitialized = true;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    if (_isInitialized) {
-      _controller.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isInitialized) return const SizedBox();
-
-    final randomSize = 4.0 + ((widget.left.toInt() % 5)).toDouble();
-
-    return AnimatedBuilder(
-      animation: Listenable.merge([_position, _opacity]),
-      builder: (context, child) {
-        return Positioned(
-          left: widget.left,
-          top: _position.value,
-          child: Opacity(opacity: _opacity.value, child: child),
-        );
-      },
-      child: Container(
-        width: randomSize,
-        height: randomSize,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withOpacity(0.95),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.white.withOpacity(0.6),
-              blurRadius: randomSize * 1.5,
-              spreadRadius: randomSize * 0.5,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

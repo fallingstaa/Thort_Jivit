@@ -1,11 +1,15 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:thort_jivit/services/storage_uploader.dart';
+import 'package:thort_jivit/services/video_thumbnail_service.dart';
+import 'package:thort_jivit/services/local_video_storage_service.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final LocalVideoStorageService _localStorage = LocalVideoStorageService();
 
   Future<String> uploadVideoAndMetadata({
     String? filePath,
@@ -33,7 +37,7 @@ class FirestoreService {
     print('[FIRESTORE] User ID: $uid');
     final safeName = filename ?? '${DateTime.now().millisecondsSinceEpoch}.mp4';
     final storagePath =
-        'users/$uid/weeks/$weekId/videos/day$dayIndex/${safeName}';
+        'users/$uid/weeks/$weekId/videos/day$dayIndex/$safeName';
     print('[FIRESTORE] Storage path: $storagePath');
 
     if (bytes == null && filePath == null) {
@@ -95,6 +99,41 @@ class FirestoreService {
       dataToSet['storageDownloadUrl'] = downloadUrl;
       dataToSet['storagePath'] = storagePath;
       dataToSet['status'] = 'uploaded';
+
+      // Generate and upload thumbnail
+      if (filePath != null) {
+        print('[FIRESTORE] Generating thumbnail...');
+        try {
+          final thumbnailBytes = await VideoThumbnailService.generateThumbnail(
+            videoPath: filePath,
+            maxHeight: 300,
+            quality: 75,
+          );
+
+          if (thumbnailBytes != null) {
+            print('[FIRESTORE] Uploading thumbnail...');
+            final thumbnailPath = 'users/$uid/weeks/$weekId/thumbnails/day$dayIndex/${safeName.replaceAll('.mp4', '.png')}';
+            try {
+              final thumbnailUrl = await uploadToStorage(
+                bytes: thumbnailBytes,
+                storagePath: thumbnailPath,
+                contentType: 'image/png',
+                filename: '${safeName.replaceAll('.mp4', '.png')}',
+              );
+              dataToSet['thumbnailUrl'] = thumbnailUrl;
+              print('[FIRESTORE] Thumbnail uploaded successfully: $thumbnailUrl');
+            } catch (e) {
+              print('[FIRESTORE] Thumbnail upload error: $e');
+            }
+          } else {
+            print('[FIRESTORE] Thumbnail generation returned null (might be on web platform)');
+          }
+        } catch (e) {
+          print('[FIRESTORE] Error during thumbnail generation: $e');
+        }
+      } else {
+        print('[FIRESTORE] No filePath provided, skipping thumbnail generation');
+      }
     } catch (e) {
       print('[FIRESTORE] Upload error: $e');
       // If upload fails, still write metadata so we don't lose the user's note.
@@ -248,14 +287,33 @@ class FirestoreService {
 
   /// Get the current active week's data including real dates and recorded status for each day.
   /// Returns a map with 'weekStart' (DateTime), 'days' (List of 7 maps with 'date', 'dayLetter', 'hasVideo').
+  /// For new users, automatically creates a week if it doesn't exist for today.
   Future<Map<String, dynamic>?> getCurrentWeekData() async {
     final user = _auth.currentUser;
     if (user == null) return null;
 
     final now = DateTime.now();
-    final weekInfo = await _getWeekContainingDate(now);
+    var weekInfo = await _getWeekContainingDate(now);
 
-    if (weekInfo == null) return null;
+    // If no week exists for today, create one (for new users)
+    if (weekInfo == null) {
+      final today = DateTime(now.year, now.month, now.day);
+      // Calculate the start of the week (Monday)
+      // weekday: 1=Monday, 2=Tuesday, ..., 7=Sunday
+      final weekday = today.weekday;
+      // Calculate days to subtract to get to Monday
+      // Monday (1) -> 0 days, Tuesday (2) -> 1 day, ..., Sunday (7) -> 6 days
+      final daysFromMonday = weekday == 7 ? 6 : weekday - 1;
+      final weekStart = today.subtract(Duration(days: daysFromMonday));
+      
+      // Create the week
+      final weekId = await createWeek(weekStart);
+      weekInfo = {
+        'weekId': weekId,
+        'startDate': weekStart,
+        'weekIndex': 0,
+      };
+    }
 
     final DateTime weekStart = weekInfo['startDate'] as DateTime;
     final String weekId = weekInfo['weekId'] as String;
@@ -349,7 +407,7 @@ class FirestoreService {
       if (idx > maxIndex) maxIndex = idx;
     }
     final newIndex = maxIndex + 1;
-    final id = 'week_${newIndex}';
+    final id = 'week_$newIndex';
     await col.doc(id).set({
       'startDate': Timestamp.fromDate(startDate),
       'weekIndex': newIndex,
@@ -376,7 +434,7 @@ class FirestoreService {
   /// Check if user can record for today (only one recording per day allowed)
   /// IMPORTANT: Record type can ONLY be recorded on the actual calendar date (today only)
   /// Cannot record retroactively for past dates
-  Future<bool> canRecordToday() async {
+  Future<bool> canRecordToday({int retryCount = 0}) async {
     final user = _auth.currentUser;
     if (user == null) return false;
     // Admin bypass: always allow
@@ -401,6 +459,11 @@ class FirestoreService {
 
     final uid = user.uid;
 
+    // Add small delay for Firestore eventual consistency (especially after just saving)
+    if (retryCount == 0) {
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+
     // Check if a 'recorded' type video already exists for today
     // Get all videos for today's day index
     final dayIndex = diff + 1;
@@ -415,19 +478,33 @@ class FirestoreService {
             .get();
 
     // Check if any of them are 'recorded' type
+    print('[FIRESTORE] Checking ${videosSnapshot.docs.length} videos for dayIndex $dayIndex');
     for (final doc in videosSnapshot.docs) {
       final data = doc.data();
-      if (data['videoType'] == 'recorded') {
+      final videoType = data['videoType'];
+      print('[FIRESTORE] Video ${doc.id}: videoType=$videoType, dayIndex=${data['dayIndex']}');
+      if (videoType == 'recorded') {
         // Already have a recorded video for today
+        print('[FIRESTORE] ❌ Found existing recorded video for today: ${doc.id} - CANNOT RECORD');
         return false;
       }
     }
+    print('[FIRESTORE] ✓ No recorded video found for today - CAN RECORD');
+
+    // If no video found and this is first attempt, retry once more after a longer delay
+    if (retryCount == 0 && videosSnapshot.docs.isEmpty) {
+      print('[FIRESTORE] No videos found, retrying after delay...');
+      await Future.delayed(const Duration(milliseconds: 500));
+      return canRecordToday(retryCount: 1);
+    }
 
     // No recorded video exists for today, allow recording
+    print('[FIRESTORE] No recorded video found for today, allowing recording');
     return true;
   }
 
   /// Save a recorded video with metadata (can only record once per day, for today only)
+  /// NEW: Saves locally first, defers Firebase upload to background sync
   Future<String> saveRecordedVideo({
     String? filePath,
     Uint8List? bytes,
@@ -480,6 +557,26 @@ class FirestoreService {
       throw Exception('No file data provided');
     }
 
+    // NEW: Save video to local storage first
+    String localPath = '';
+    int fileSize = 0;
+    
+    if (filePath != null) {
+      try {
+        final videoFile = File(filePath);
+        localPath = await _localStorage.saveVideoLocally(
+          videoFile: videoFile,
+          weekId: weekId,
+          dayIndex: dayIndex,
+        );
+        fileSize = await videoFile.length();
+        print('[FIRESTORE] Video saved locally: $localPath');
+      } catch (e) {
+        print('[FIRESTORE] Error saving video locally: $e');
+        throw Exception('Failed to save video locally: $e');
+      }
+    }
+
     // Check if there's already a video for this day
     final existingDocRef = _firestore
         .collection('users')
@@ -505,48 +602,177 @@ class FirestoreService {
                 )
             : existingDocRef;
 
+    // NEW: Save metadata with local path and pending upload status
     final dataToSet = {
       'emoji': emoji,
       'textNote': textNote,
       'uploadedAt': FieldValue.serverTimestamp(),
       'dayIndex': dayIndex,
-      'videoType': 'recorded', // Mark as recorded (vs uploaded)
+      'videoType': 'recorded',
+      'localPath': localPath, // NEW
+      'uploadStatus': 'pending', // NEW
+      'storagePath': storagePath,
+      'isCompressed': false, // NEW
+      'originalSize': fileSize, // NEW
+      'timestamp': Timestamp.fromDate(timestamp ?? today), // Always set timestamp for calendar
     };
 
-    if (timestamp != null) {
-      dataToSet['timestamp'] = Timestamp.fromDate(timestamp);
-    }
+    // timestamp is now always set above, so this is no longer needed
+    // if (timestamp != null) {
+    //   dataToSet['timestamp'] = Timestamp.fromDate(timestamp);
+    // }
 
-    String? downloadUrl;
-    try {
-      print('[FIRESTORE] Uploading recorded video to storage...');
-      downloadUrl = await uploadToStorage(
-        filePath: filePath,
-        bytes: bytes,
-        storagePath: storagePath,
-        contentType: 'video/mp4',
-        filename: safeName,
-      );
-      print('[FIRESTORE] Recording upload successful');
-      dataToSet['storageDownloadUrl'] = downloadUrl;
-      dataToSet['storagePath'] = storagePath;
-      dataToSet['status'] = 'uploaded';
-    } catch (e) {
-      print('[FIRESTORE] Recording upload error: $e');
-      dataToSet['storagePath'] = storagePath;
-      dataToSet['status'] = 'upload_failed';
-      dataToSet['uploadError'] = e.toString();
+    // Generate and save thumbnail from local file
+    if (filePath != null) {
+      print('[FIRESTORE] Generating thumbnail for recorded video...');
+      try {
+        final thumbnailBytes = await VideoThumbnailService.generateThumbnail(
+          videoPath: filePath,
+          maxHeight: 300,
+          quality: 75,
+        );
+
+        if (thumbnailBytes != null) {
+          print('[FIRESTORE] Uploading thumbnail...');
+          final thumbnailPath = 'users/$uid/weeks/$weekId/thumbnails/day$dayIndex/${safeName.replaceAll('.mp4', '.png')}';
+          try {
+            final thumbnailUrl = await uploadToStorage(
+              bytes: thumbnailBytes,
+              storagePath: thumbnailPath,
+              contentType: 'image/png',
+              filename: '${safeName.replaceAll('.mp4', '.png')}',
+            );
+            dataToSet['thumbnailUrl'] = thumbnailUrl;
+            print('[FIRESTORE] Thumbnail uploaded successfully: $thumbnailUrl');
+          } catch (e) {
+            print('[FIRESTORE] Thumbnail upload error: $e');
+          }
+        } else {
+          print('[FIRESTORE] Thumbnail generation returned null');
+        }
+      } catch (e) {
+        print('[FIRESTORE] Error during thumbnail generation: $e');
+      }
     }
 
     print('[FIRESTORE] Writing recorded video metadata to Firestore...');
+    print('[FIRESTORE] Video data: dayIndex=$dayIndex, videoType=recorded, uploadStatus=pending, localPath=$localPath');
     await docRef.set(dataToSet, SetOptions(merge: true));
-    print('[FIRESTORE] Recording metadata saved.');
+    print('[FIRESTORE] Recording metadata saved (upload pending). Document ID: ${docRef.id}');
+    
+    // Wait a moment to ensure Firestore write is complete
+    await Future.delayed(const Duration(milliseconds: 200));
 
     // Update user streak
     print('[FIRESTORE] Recalculating user streak...');
     await updateUserStreak();
 
-    return downloadUrl ?? '';
+    return localPath; // Return local path instead of download URL
+  }
+
+  /// Upload pending videos for a specific week to Firebase (called before creating weekly recap)
+  Future<Map<String, dynamic>> uploadPendingVideosForWeek(String weekId) async {
+    try {
+      print('[FIRESTORE] Uploading pending videos for week: $weekId');
+      
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw Exception('User not signed in');
+      }
+
+      final uid = user.uid;
+
+      // Get all pending videos for this week
+      final videosSnapshot = await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('weeks')
+          .doc(weekId)
+          .collection('videos')
+          .where('uploadStatus', isEqualTo: 'pending')
+          .get();
+
+      if (videosSnapshot.docs.isEmpty) {
+        print('[FIRESTORE] No pending videos to upload');
+        return {
+          'success': true,
+          'uploaded': 0,
+          'failed': 0,
+        };
+      }
+
+      print('[FIRESTORE] Found ${videosSnapshot.docs.length} pending videos');
+
+      int uploaded = 0;
+      int failed = 0;
+
+      for (var videoDoc in videosSnapshot.docs) {
+        try {
+          final data = videoDoc.data();
+          final localPath = data['localPath'] as String?;
+          final storagePath = data['storagePath'] as String;
+
+          if (localPath == null || localPath.isEmpty) {
+            print('[FIRESTORE] No local path for video ${videoDoc.id}');
+            failed++;
+            continue;
+          }
+
+          // Check if file exists
+          final exists = await _localStorage.videoExists(localPath);
+          if (!exists) {
+            print('[FIRESTORE] Local file not found: $localPath');
+            await videoDoc.reference.update({
+              'uploadStatus': 'failed',
+              'uploadError': 'Local file not found',
+            });
+            failed++;
+            continue;
+          }
+
+          // Upload to Firebase Storage
+          final downloadUrl = await uploadToStorage(
+            filePath: localPath,
+            storagePath: storagePath,
+            contentType: 'video/mp4',
+            filename: storagePath.split('/').last,
+          );
+
+          // Update Firestore with download URL
+          await videoDoc.reference.update({
+            'storageDownloadUrl': downloadUrl,
+            'uploadStatus': 'uploaded',
+            'uploadedAt': FieldValue.serverTimestamp(),
+          });
+
+          uploaded++;
+          print('[FIRESTORE] Uploaded: ${videoDoc.id}');
+        } catch (e) {
+          print('[FIRESTORE] Error uploading video ${videoDoc.id}: $e');
+          await videoDoc.reference.update({
+            'uploadStatus': 'failed',
+            'uploadError': e.toString(),
+          });
+          failed++;
+        }
+      }
+
+      print('[FIRESTORE] Upload completed - Uploaded: $uploaded, Failed: $failed');
+
+      return {
+        'success': true,
+        'uploaded': uploaded,
+        'failed': failed,
+      };
+    } catch (e) {
+      print('[FIRESTORE] Error in uploadPendingVideosForWeek: $e');
+      return {
+        'success': false,
+        'message': 'Error: $e',
+        'uploaded': 0,
+        'failed': 0,
+      };
+    }
   }
 
   /// Whether the user may upload for the given [date]. Rules:
@@ -1010,6 +1236,7 @@ class FirestoreService {
       final startDate = (weekData['startDate'] as Timestamp?)?.toDate();
 
       final videosCol = weeksCol.doc(weekId).collection('videos');
+      // Get all videos (including pending ones) - no filter on uploadStatus
       final videosSnapshot = await videosCol.get();
       print(
         '[FIRESTORE] Week $weekId has ${videosSnapshot.docs.length} video docs',
@@ -1018,19 +1245,34 @@ class FirestoreService {
       for (final videoDoc in videosSnapshot.docs) {
         final data = videoDoc.data();
         final status = data['status'];
+        final uploadStatus = data['uploadStatus']; // NEW: Check uploadStatus too
         final videoType =
             data['videoType'] ??
             'unknown'; // Handle old videos without videoType
         final hasUrl = data['storageDownloadUrl'] != null;
+        final hasLocalPath = data['localPath'] != null; // NEW: Check for local path
         final dayIndex = data['dayIndex'];
         print(
-          '[FIRESTORE] Video ${videoDoc.id}: dayIndex=$dayIndex, type="$videoType", status="$status", hasUrl=$hasUrl',
+          '[FIRESTORE] Video ${videoDoc.id}: dayIndex=$dayIndex, type="$videoType", status="$status", uploadStatus="$uploadStatus", hasUrl=$hasUrl, hasLocalPath=$hasLocalPath',
         );
 
-        // Include both uploaded AND recorded videos that have been successfully saved
-        if ((data['status'] == 'uploaded' || data['status'] == 'recorded') &&
+        // Include videos that are:
+        // 1. Old format: status='uploaded' or 'recorded' with storageDownloadUrl
+        // 2. New format: uploadStatus='pending' or 'uploaded' with localPath or storageDownloadUrl
+        // 3. Any video with videoType='recorded' (even if missing other fields)
+        final isOldFormat = (status == 'uploaded' || status == 'recorded') &&
             data['storageDownloadUrl'] != null &&
-            (data['storageDownloadUrl'] as String).isNotEmpty) {
+            (data['storageDownloadUrl'] as String).isNotEmpty;
+        
+        final isNewFormat = (uploadStatus == 'pending' || uploadStatus == 'uploaded') &&
+            (hasLocalPath || hasUrl);
+        
+        // CRITICAL: Include any recorded video, even if it's missing some fields
+        // This ensures newly recorded videos appear immediately
+        final isRecordedVideo = videoType == 'recorded';
+
+        if (isOldFormat || isNewFormat || isRecordedVideo) {
+          print('[FIRESTORE] ✓ Including video ${videoDoc.id} (oldFormat=$isOldFormat, newFormat=$isNewFormat, recorded=$isRecordedVideo)');
           final dayIndex = data['dayIndex'] as int?;
           DateTime? videoDate;
           if (startDate != null && dayIndex != null) {
@@ -1050,7 +1292,10 @@ class FirestoreService {
             'videoType': videoType,
             'emoji': data['emoji'] ?? '',
             'textNote': data['textNote'] ?? '',
-            'storageDownloadUrl': data['storageDownloadUrl'],
+            'storageDownloadUrl': data['storageDownloadUrl'] ?? '',
+            'localPath': data['localPath'] ?? '', // NEW: Include local path
+            'uploadStatus': uploadStatus ?? 'uploaded', // NEW: Include upload status
+            'thumbnailUrl': data['thumbnailUrl'] ?? '',
             'uploadedAt': data['uploadedAt'],
             'timestamp': data['timestamp'],
             'uploadedDate': (data['uploadedAt'] as Timestamp?)?.toDate(),
@@ -1060,10 +1305,10 @@ class FirestoreService {
                     : '',
             'durationSeconds': durationSeconds,
             'durationText': durationText,
-            'isFavorite': false, // Can be extended later with favorites feature
+            'isFavorite': false, // Favorites are stored locally only, not in Firestore
           });
           print(
-            '[FIRESTORE] ✓ Added ${videoDoc.id} (type=$videoType, day=$dayIndex) to allVideos list',
+            '[FIRESTORE] ✓ Added ${videoDoc.id} (type=$videoType, day=$dayIndex, uploadStatus=$uploadStatus) to allVideos list',
           );
         }
       }
@@ -1109,6 +1354,19 @@ class FirestoreService {
       return 0;
     }
     return 0;
+  }
+
+  String _formatDuration(int seconds) {
+    if (seconds <= 0) return '0:00';
+    final hours = seconds ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    final secs = seconds % 60;
+    
+    if (hours > 0) {
+      return '${hours}:${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+    } else {
+      return '${minutes}:${secs.toString().padLeft(2, '0')}';
+    }
   }
 
   String _getMonthName(int month) {
@@ -1649,6 +1907,117 @@ class FirestoreService {
       print('[FIRESTORE] Music track updated successfully');
     } catch (e) {
       print('[FIRESTORE] Error updating music track: $e');
+      rethrow;
+    }
+  }
+
+  /// Update favorite status for a video
+  Future<void> updateVideoFavorite({
+    required String weekId,
+    required String dayId,
+    required bool isFavorite,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('User not signed in');
+
+    final uid = user.uid;
+    print(
+      '[FIRESTORE] Updating favorite status for weekId: $weekId, dayId: $dayId, isFavorite: $isFavorite',
+    );
+
+    try {
+      final videoDoc = _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('weeks')
+          .doc(weekId)
+          .collection('videos')
+          .doc(dayId);
+
+      await videoDoc.set({
+        'isFavorite': isFavorite,
+        'favoriteUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      print('[FIRESTORE] ✅ Favorite status updated successfully');
+    } catch (e) {
+      print('[FIRESTORE] ❌ Error updating favorite status: $e');
+      rethrow;
+    }
+  }
+
+  /// Get all favorite videos for the current user
+  Future<List<Map<String, dynamic>>> getFavoriteVideos() async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('User not signed in');
+
+    final uid = user.uid;
+    print('[FIRESTORE] Fetching favorite videos for uid: $uid');
+
+    final List<Map<String, dynamic>> favoriteVideos = [];
+
+    try {
+      // Get all weeks
+      final weeksSnapshot = await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('weeks')
+          .get();
+
+      for (final weekDoc in weeksSnapshot.docs) {
+        final weekId = weekDoc.id;
+
+        // Get all videos in this week
+        final videosSnapshot = await _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('weeks')
+            .doc(weekId)
+            .collection('videos')
+            .where('isFavorite', isEqualTo: true)
+            .get();
+
+        for (final videoDoc in videosSnapshot.docs) {
+          final data = videoDoc.data();
+          final videoDate = (data['timestamp'] as Timestamp?)?.toDate();
+          final durationSeconds = _parseDurationSeconds(data['durationSeconds']);
+          final durationText = _formatDuration(durationSeconds);
+
+          favoriteVideos.add({
+            'id': videoDoc.id,
+            'weekId': weekId,
+            'dayId': videoDoc.id,
+            'emoji': data['emoji'] ?? '',
+            'textNote': data['textNote'] ?? '',
+            'description': data['textNote'] ?? '',
+            'storageDownloadUrl': data['storageDownloadUrl'] ?? '',
+            'localPath': data['localPath'] ?? '',
+            'thumbnailUrl': data['thumbnailUrl'] ?? '',
+            'uploadedAt': data['uploadedAt'],
+            'timestamp': data['timestamp'],
+            'uploadedDate': (data['uploadedAt'] as Timestamp?)?.toDate(),
+            'date': videoDate != null
+                ? '${_getMonthName(videoDate.month)} ${videoDate.day}, ${videoDate.year}'
+                : '',
+            'durationSeconds': durationSeconds,
+            'durationText': durationText,
+            'isFavorite': true,
+          });
+        }
+      }
+
+      // Sort by date (newest first)
+      favoriteVideos.sort((a, b) {
+        final aTime = a['uploadedAt'] as Timestamp?;
+        final bTime = b['uploadedAt'] as Timestamp?;
+        if (aTime == null || bTime == null) return 0;
+        return bTime.compareTo(aTime);
+      });
+
+      print('[FIRESTORE] Found ${favoriteVideos.length} favorite videos');
+      return favoriteVideos;
+    } catch (e) {
+      print('[FIRESTORE] Error fetching favorite videos: $e');
       rethrow;
     }
   }
