@@ -165,9 +165,10 @@ The recap creator handles mixed lengths, but shorter clips generally produce a t
 - View all their daily videos in the Videos gallery
 - Share daily videos to Instagram
 - Mark videos as favorites
-- View their weekly progress on the home screen
+- View their weekly progress on the home screen (shows all 7 days with dates)
 - Maintain a daily streak
 - Get daily inspirational prompts
+- Receive smart daily reminders at 12 PM (only if they haven't recorded yet)
 
 ### ❌ What Users Cannot Do
 - Record on past or future dates
@@ -176,6 +177,66 @@ The recap creator handles mixed lengths, but shorter clips generally produce a t
 - Record more than once per day
 - Upload videos beyond 2 days in advance
 - Delete daily videos after creating a recap
+
+---
+
+## Daily Reminders & Notifications 🔔
+
+### Smart Notification System
+The app includes an intelligent daily reminder system that helps you stay consistent with your recording habit:
+
+#### How It Works
+- **Automatic Reminders**: You'll receive a friendly reminder notification at **12:00 PM** every day
+- **Smart Detection**: The notification **only appears if you haven't recorded yet** for that day
+- **No Spam**: If you've already recorded, you won't receive the notification (no unnecessary interruptions!)
+- **Friendly Message**: "Time to Record! 🎥 - Capture your daily moment and keep your streak going! 📹"
+
+#### Managing Notifications
+- **Enable/Disable**: Go to **Profile → Privacy & Security → Notifications** to toggle reminders on/off
+- **Test Notifications**: Use the "Test Notification" button to verify notifications are working (only available when enabled)
+- **Settings Persist**: Your notification preference is saved and persists across app restarts
+
+#### Notification Features
+- ✅ Timezone-aware scheduling (uses your local time)
+- ✅ Works even when the app is closed
+- ✅ Automatically reschedules daily
+- ✅ Respects your recording status (won't notify if already recorded)
+
+**Example Scenario:**
+- **11:00 AM**: You record your daily video
+- **12:00 PM**: No notification appears (you already recorded!)
+- **Next Day 12:00 PM**: You receive a reminder because you haven't recorded yet
+
+---
+
+## Weekly Progress Display 📊
+
+### Visual Progress Tracking
+The home screen features a **Weekly Progress** card that shows your recording activity for the current week:
+
+#### What You'll See
+- **All 7 Days**: Monday through Sunday are always displayed
+- **Date Information**: Each day shows the actual calendar date
+- **Day Letters**: Quick reference (S, M, T, W, T, F, S)
+- **Progress Indicators**: Checkmarks show which days you've recorded
+- **Progress Counter**: Shows "X/7" (e.g., "3/7" means 3 days recorded out of 7)
+- **Progress Bar**: Visual representation of your weekly completion
+
+#### For New Users
+- Even if you haven't recorded anything yet, you'll see all 7 days of the current week
+- Dates and day letters are displayed immediately
+- As you record videos, checkmarks will appear on the corresponding days
+- The progress counter and bar update automatically
+
+**Example Display:**
+```
+Weekly Progress                    3/7
+[████████░░░░░░░░░░░░] 43%
+
+M  T  W  T  F  S  S
+9  10 11 12 13 14 15
+✓  ✓  ✓  ○  ○  ○  ○
+```
 
 ---
 
@@ -209,5 +270,16 @@ During December, the app includes special holiday-themed elements:
 
 ---
 
-**Last Updated:** December 11, 2025
-**Version:** 1.0
+---
+
+## Additional Resources
+
+For more detailed information:
+- **Notification System**: See `NOTIFICATION_SYSTEM.md` for technical details
+- **Weekly Progress UI**: See `WEEKLY_PROGRESS_UI.md` for UI component documentation
+- **Dark Mode**: See `DARK_MODE_GUIDE.md` for theme information
+
+---
+
+**Last Updated:** December 20, 2025
+**Version:** 1.1

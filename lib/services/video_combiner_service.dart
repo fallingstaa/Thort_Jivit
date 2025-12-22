@@ -61,7 +61,7 @@ class VideoCombinerService {
       }
 
       // Use the mergeVideosV3 function (Gen 1) with concat filter
-      final functionUrl =
+      const functionUrl =
           'https://us-central1-thort-jivit.cloudfunctions.net/mergeVideosV3';
 
       print('[VIDEO_COMBINER] Calling Cloud Function: $functionUrl');
@@ -189,7 +189,7 @@ class VideoCombinerService {
       final user = _auth.currentUser;
       if (user == null) throw Exception('User not signed in');
 
-      final functionUrl =
+      const functionUrl =
           'https://us-central1-thort-jivit.cloudfunctions.net/changeRecapMusic';
 
       print('[VIDEO_COMBINER] Calling changeRecapMusic: $functionUrl');

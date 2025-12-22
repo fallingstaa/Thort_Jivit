@@ -299,15 +299,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
-            title: Row(
+            title: const Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.check_circle,
                   color: Color(0xFF4CAF50),
                   size: 28,
                 ),
-                const SizedBox(width: 12),
-                const Text(
+                SizedBox(width: 12),
+                Text(
                   'Success!',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),

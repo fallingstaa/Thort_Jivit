@@ -3,7 +3,7 @@ import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'dart:io';
-import 'package:thort_jivit/services/firestore_service.dart';
+import 'package:flutter/foundation.dart';
 import 'video_detail_screen.dart';
 
 class _MediaSizeClipper extends CustomClipper<Rect> {
@@ -22,7 +22,7 @@ class _MediaSizeClipper extends CustomClipper<Rect> {
 }
 
 class RecordScreen extends StatefulWidget {
-  const RecordScreen({Key? key}) : super(key: key);
+  const RecordScreen({super.key});
 
   @override
   State<RecordScreen> createState() => _RecordScreenState();
@@ -36,7 +36,7 @@ class _RecordScreenState extends State<RecordScreen> {
   bool _isFrontCamera = true;
   bool _isFlashOn = false;
   Duration _recordingDuration = Duration.zero;
-  Duration _maxDuration = Duration(seconds: 30);
+  final Duration _maxDuration = const Duration(seconds: 30);
   String? _recordedVideoPath;
   final List<String> _segmentPaths = [];
   bool _isProcessingVideo = false;
@@ -118,6 +118,7 @@ class _RecordScreenState extends State<RecordScreen> {
         _segmentPaths.add(xfile.path);
         print('Added segment: ${xfile.path}');
         print('Total segments: ${_segmentPaths.length}');
+        print('Platform: kIsWeb=$kIsWeb');
 
         setState(() {
           _isRecording = false;
@@ -125,9 +126,11 @@ class _RecordScreenState extends State<RecordScreen> {
         });
 
         String finalPath;
-        if (_segmentPaths.length == 1) {
+        
+        // On web, skip FFmpeg processing and use the recorded path directly
+        if (kIsWeb || _segmentPaths.length == 1) {
           finalPath = _segmentPaths.first;
-          print('Single segment, using: $finalPath');
+          print('Using recorded path directly: $finalPath');
         } else {
           print('Merging ${_segmentPaths.length} segments...');
 
@@ -177,13 +180,14 @@ class _RecordScreenState extends State<RecordScreen> {
         print('Final video path set: $_recordedVideoPath');
 
         // Add a small delay to ensure state is updated
-        await Future.delayed(Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 100));
 
         if (mounted) {
           _navigateToVideoPreview();
         }
       } catch (e) {
         print('Error stopping recording: $e');
+        print('Error stack trace: ${StackTrace.current}');
         // Even if there's an error, try to navigate with whatever we have
         if (_segmentPaths.isNotEmpty && mounted) {
           setState(() {
@@ -192,6 +196,18 @@ class _RecordScreenState extends State<RecordScreen> {
             _isProcessingVideo = false;
           });
           _navigateToVideoPreview();
+        } else if (mounted) {
+          // Show error message if no segments available
+          setState(() {
+            _isRecording = false;
+            _isProcessingVideo = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to save recording: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     } else {
@@ -203,7 +219,7 @@ class _RecordScreenState extends State<RecordScreen> {
 
   void _startTimer() {
     if (_isRecording) {
-      Future.delayed(Duration(seconds: 1), () {
+      Future.delayed(const Duration(seconds: 1), () {
         if (_isRecording && mounted) {
           setState(() {
             _recordingDuration = Duration(
@@ -246,7 +262,7 @@ class _RecordScreenState extends State<RecordScreen> {
     // Don't allow camera switching during recording
     if (_isRecording) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Cannot switch camera while recording'),
           backgroundColor: Colors.orange,
           duration: Duration(seconds: 2),
@@ -276,7 +292,7 @@ class _RecordScreenState extends State<RecordScreen> {
     } else {
       print('Error: No video path available for preview');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Error: No video recorded'),
           backgroundColor: Colors.red,
         ),
@@ -322,7 +338,7 @@ class _RecordScreenState extends State<RecordScreen> {
                         onPressed: () => Navigator.pop(context),
                       ),
                       Container(
-                        padding: EdgeInsets.symmetric(
+                        padding: const EdgeInsets.symmetric(
                           horizontal: 10,
                           vertical: 5,
                         ),
@@ -399,7 +415,7 @@ class _RecordScreenState extends State<RecordScreen> {
                                           ),
                                         ),
                                       )
-                                      : Icon(
+                                      : const Icon(
                                         Icons.camera_alt,
                                         color: Colors.white,
                                         size: 36,
@@ -408,8 +424,8 @@ class _RecordScreenState extends State<RecordScreen> {
                           ),
                         ),
                         if (!_isRecording && !_isProcessingVideo) ...[
-                          SizedBox(height: 12),
-                          Text(
+                          const SizedBox(height: 12),
+                          const Text(
                             'Tap to start recording',
                             style: TextStyle(
                               color: Colors.white,
@@ -419,8 +435,8 @@ class _RecordScreenState extends State<RecordScreen> {
                           ),
                         ],
                         if (_isProcessingVideo) ...[
-                          SizedBox(height: 12),
-                          Row(
+                          const SizedBox(height: 12),
+                          const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               SizedBox(
@@ -456,7 +472,7 @@ class _RecordScreenState extends State<RecordScreen> {
                     top: 100,
                     left: 16,
                     child: Container(
-                      padding: EdgeInsets.symmetric(
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 6,
                       ),
@@ -470,13 +486,13 @@ class _RecordScreenState extends State<RecordScreen> {
                           Container(
                             width: 8,
                             height: 8,
-                            decoration: BoxDecoration(
+                            decoration: const BoxDecoration(
                               color: Colors.white,
                               shape: BoxShape.circle,
                             ),
                           ),
-                          SizedBox(width: 8),
-                          Text(
+                          const SizedBox(width: 8),
+                          const Text(
                             'REC',
                             style: TextStyle(
                               color: Colors.white,
@@ -497,9 +513,9 @@ class _RecordScreenState extends State<RecordScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.error_outline, size: 80, color: Colors.red),
-                    SizedBox(height: 16),
-                    Text(
+                    const Icon(Icons.error_outline, size: 80, color: Colors.red),
+                    const SizedBox(height: 16),
+                    const Text(
                       'Camera Error',
                       style: TextStyle(
                         color: Colors.white,
@@ -507,26 +523,26 @@ class _RecordScreenState extends State<RecordScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 8),
-                    Text(
+                    const SizedBox(height: 8),
+                    const Text(
                       'Failed to initialize camera',
                       style: TextStyle(color: Colors.white70, fontSize: 14),
                     ),
-                    SizedBox(height: 24),
+                    const SizedBox(height: 24),
                     ElevatedButton(
                       onPressed: () {
                         setState(() {
                           _initializeCamera();
                         });
                       },
-                      child: Text('Retry'),
+                      child: const Text('Retry'),
                     ),
                   ],
                 ),
               ),
             );
           } else {
-            return Scaffold(
+            return const Scaffold(
               backgroundColor: Colors.black,
               body: Center(
                 child: Column(

@@ -42,10 +42,10 @@ class ClipSelectionScreen extends StatefulWidget {
   final List<Map<String, dynamic>> clips;
 
   const ClipSelectionScreen({
-    Key? key,
+    super.key,
     required this.weekId,
     required this.clips,
-  }) : super(key: key);
+  });
 
   @override
   State<ClipSelectionScreen> createState() => _ClipSelectionScreenState();
@@ -213,12 +213,23 @@ class _ClipSelectionScreenState extends State<ClipSelectionScreen> {
     final List<ClipData> clipData =
         widget.clips.map((map) => ClipData.fromMap(map)).toList();
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+    final horizontalPadding = isTablet ? 24.0 : 16.0;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Confirm Clips for Merge',
-          style: TextStyle(color: Colors.red),
+          style: TextStyle(
+            color: const Color(0xFF009688),
+            fontSize: isTablet ? 20 : 18,
+            fontWeight: FontWeight.w600,
+          ),
         ),
+        backgroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Color(0xFF009688)),
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.close),
@@ -226,72 +237,118 @@ class _ClipSelectionScreenState extends State<ClipSelectionScreen> {
           ),
         ],
       ),
-      body: Theme(
-        data: Theme.of(context).copyWith(
-          textTheme: Theme.of(
-            context,
-          ).textTheme.apply(bodyColor: Colors.red, displayColor: Colors.red),
-        ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Week ID: ${widget.weekId}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+      body: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.all(horizontalPadding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Week ID: ${widget.weekId}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: isTablet ? 18 : 16,
+                    color: const Color(0xFF1A1A1A),
                   ),
-                  Text(
-                    'Clips ready for merge: ${clipData.length} (Duration: 50s Simulated)',
-                    style: const TextStyle(color: Colors.red),
+                ),
+                SizedBox(height: isTablet ? 10 : 8),
+                Text(
+                  'Clips ready for merge: ${clipData.length}',
+                  style: TextStyle(
+                    color: const Color(0xFF666666),
+                    fontSize: isTablet ? 16 : 14,
                   ),
-                  const SizedBox(height: 15),
-                  ElevatedButton.icon(
-                    onPressed: _isProcessingMerge ? null : _startMergeProcess,
-                    icon:
-                        _isProcessingMerge
-                            ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                            : const Icon(Icons.merge_type),
-                    label: Text(
+                ),
+                SizedBox(height: isTablet ? 18 : 15),
+                ElevatedButton.icon(
+                  onPressed: _isProcessingMerge ? null : _startMergeProcess,
+                  icon:
                       _isProcessingMerge
-                          ? 'PROCESSING MERGE...'
-                          : 'CONFIRM & START MERGE',
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                      backgroundColor: Colors.deepPurple,
+                          ? SizedBox(
+                            width: isTablet ? 22 : 20,
+                            height: isTablet ? 22 : 20,
+                            child: const CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : Icon(Icons.merge_type, size: isTablet ? 22 : 20),
+                  label: Text(
+                    _isProcessingMerge
+                        ? 'PROCESSING MERGE...'
+                        : 'CONFIRM & START MERGE',
+                    style: TextStyle(fontSize: isTablet ? 16 : 14),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: Size.fromHeight(isTablet ? 56 : 50),
+                    backgroundColor: const Color(0xFF009688),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const Divider(),
-            Expanded(
-              child: ListView.builder(
-                itemCount: clipData.length,
-                itemBuilder: (context, index) {
-                  final clip = clipData[index];
-                  return ListTile(
-                    leading: CircleAvatar(child: Text(clip.emoji)),
-                    title: Text(clip.description),
-                    subtitle: Text(
-                      'Day: ${clip.dayId} | Duration: ${clip.durationSeconds.toStringAsFixed(1)}s',
+          ),
+          const Divider(),
+          Expanded(
+            child: ListView.builder(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              itemCount: clipData.length,
+              itemBuilder: (context, index) {
+                final clip = clipData[index];
+                return Container(
+                  margin: EdgeInsets.only(bottom: isTablet ? 12 : 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ListTile(
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: isTablet ? 20 : 16,
+                      vertical: isTablet ? 12 : 8,
                     ),
-                  );
-                },
-              ),
+                    leading: CircleAvatar(
+                      radius: isTablet ? 24 : 20,
+                      backgroundColor: const Color(0xFF009688).withOpacity(0.1),
+                      child: Text(
+                        clip.emoji,
+                        style: TextStyle(fontSize: isTablet ? 22 : 18),
+                      ),
+                    ),
+                    title: Text(
+                      clip.description,
+                      style: TextStyle(
+                        fontSize: isTablet ? 16 : 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Day: ${clip.dayId} | Duration: ${clip.durationSeconds.toStringAsFixed(1)}s',
+                        style: TextStyle(
+                          fontSize: isTablet ? 14 : 12,
+                          color: const Color(0xFF666666),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

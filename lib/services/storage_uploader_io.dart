@@ -9,8 +9,9 @@ Future<String> uploadToStorage({
   String? contentType,
   String? filename,
 }) async {
-  if (filePath == null)
+  if (filePath == null) {
     throw ArgumentError('filePath is required on IO platforms');
+  }
 
   final ref = FirebaseStorage.instance.ref().child(storagePath);
   final file = File(filePath);

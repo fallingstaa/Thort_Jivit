@@ -302,6 +302,318 @@ async function mergeVideosHandler(req, res) {
 console.log("✓ Cloud Functions loaded: mergeVideos");
 
 /**
+ * NEW: Enhanced Cloud Function to create recap with templates and smart segments
+ * POST /createEnhancedRecap
+ * Body: {
+ *   videoSegments: [{url, startTime, duration, dayId, emoji, description}],
+ *   templateStyle: "highlight" | "cinematic" | "timeline",
+ *   effects: {transitions, textOverlays, colorFilter, musicSync},
+ *   musicBPM: number,
+ *   weekId: string,
+ *   uid: string
+ * }
+ */
+exports.createEnhancedRecap = functions
+  .runWith({ memory: "2GB", timeoutSeconds: 540 })
+  .https.onRequest(async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    res.status(200).send();
+    return;
+  }
+
+  try {
+    const { videoSegments, templateStyle, effects, musicBPM, weekId, uid } = req.body;
+
+    if (!videoSegments || !Array.isArray(videoSegments) || videoSegments.length === 0) {
+      return res.status(400).json({ error: "videoSegments array is required" });
+    }
+
+    console.log(`[ENHANCED_RECAP] Creating ${templateStyle} recap with ${videoSegments.length} segments for week ${weekId}`);
+
+    const tempDir = path.join(os.tmpdir(), `enhanced_recap_${Date.now()}`);
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    // Download and trim video segments
+    const processedPaths = [];
+    for (let i = 0; i < videoSegments.length; i++) {
+      const segment = videoSegments[i];
+      console.log(`[ENHANCED_RECAP] Processing segment ${i + 1}/${videoSegments.length}: ${segment.dayId}`);
+
+      // Download full video
+      const downloadPath = path.join(tempDir, `download_${i}.mp4`);
+      try {
+        const response = await axios.get(segment.url, { responseType: "arraybuffer" });
+        fs.writeFileSync(downloadPath, response.data);
+        console.log(`[ENHANCED_RECAP] Downloaded segment ${i + 1}`);
+      } catch (err) {
+        console.error(`[ENHANCED_RECAP] Error downloading segment ${i}:`, err.message);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        return res.status(400).json({ error: `Failed to download segment ${i}: ${err.message}` });
+      }
+
+      // Trim to specified startTime and duration
+      const trimmedPath = path.join(tempDir, `trimmed_${i}.mp4`);
+      const trimCommand = `"${ffmpegPath}" -ss ${segment.startTime || 0} -i "${downloadPath}" -t ${segment.duration} -c:v libx264 -preset ultrafast -crf 28 -c:a aac -y "${trimmedPath}"`;
+      
+      try {
+        await execAsync(trimCommand, {
+          maxBuffer: 50 * 1024 * 1024,
+          timeout: 180000,
+        });
+        processedPaths.push({
+          path: trimmedPath,
+          dayId: segment.dayId || `Day ${i + 1}`,
+          emoji: segment.emoji || "📹",
+          description: segment.description || "No description",
+          duration: segment.duration || 5.0, // Include duration for filter calculations
+        });
+        console.log(`[ENHANCED_RECAP] Trimmed segment ${i + 1} (duration: ${segment.duration}s)`);
+      } catch (err) {
+        console.error(`[ENHANCED_RECAP] Error trimming segment ${i}:`, err.message);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        return res.status(500).json({ error: `Failed to trim segment ${i}: ${err.message}` });
+      }
+    }
+
+    console.log(`[ENHANCED_RECAP] All ${processedPaths.length} segments processed`);
+
+    // Apply template-specific filters and effects
+    const filterComplex = buildFilterComplex(processedPaths, templateStyle, effects || {});
+    
+    // Create video with filters (no audio yet)
+    const videoOnlyPath = path.join(tempDir, `video_with_effects_${Date.now()}.mp4`);
+    
+    const inputArgs = processedPaths.map((p) => `-i "${p.path}"`).join(" ");
+    const filterCommand = `"${ffmpegPath}" ${inputArgs} -filter_complex "${filterComplex}" -map "[vfinal]" -c:v libx264 -preset medium -crf 23 -y "${videoOnlyPath}"`;
+    
+    console.log(`[ENHANCED_RECAP] Applying ${templateStyle} template with effects...`);
+    console.log(`[ENHANCED_RECAP] Filter command length: ${filterCommand.length} chars`);
+    console.log(`[ENHANCED_RECAP] Filter preview: ${filterComplex.substring(0, 200)}...`);
+    
+    try {
+      const result = await execAsync(filterCommand, {
+        maxBuffer: 100 * 1024 * 1024,
+        timeout: 300000,
+      });
+      console.log("[ENHANCED_RECAP] Template applied successfully");
+      if (result.stderr) {
+        console.log("[ENHANCED_RECAP] FFmpeg output:", result.stderr.substring(0, 500));
+      }
+    } catch (err) {
+      console.error("[ENHANCED_RECAP] Error applying template:", err.message);
+      console.error("[ENHANCED_RECAP] FFmpeg stderr:", err.stderr ? err.stderr.substring(0, 1000) : 'No stderr');
+      console.error("[ENHANCED_RECAP] FFmpeg stdout:", err.stdout ? err.stdout.substring(0, 1000) : 'No stdout');
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      return res.status(500).json({ error: `Template processing failed: ${err.message}` });
+    }
+
+    // Get video duration
+    const durationCommand = `"${ffprobePath}" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoOnlyPath}"`;
+    const { stdout: durationOutput } = await execAsync(durationCommand);
+    const videoDuration = parseFloat(durationOutput.trim());
+    console.log(`[ENHANCED_RECAP] Final video duration: ${videoDuration}s`);
+
+    // Add background music
+    const bucket = admin.storage().bucket();
+    const [musicFiles] = await bucket.getFiles({ prefix: "music_library/" });
+    
+    if (musicFiles.length === 0) {
+      console.log("[ENHANCED_RECAP] No music found, using video without audio");
+      const storageFileName = `recaps/${uid || "unknown"}/recap_${weekId}_${Date.now()}.mp4`;
+      const downloadToken = randomUUID();
+
+      await bucket.upload(videoOnlyPath, {
+        destination: storageFileName,
+        metadata: {
+          cacheControl: "public, max-age=3600",
+          metadata: { firebaseStorageDownloadTokens: downloadToken },
+        },
+      });
+
+      const encodedPath = encodeURIComponent(storageFileName);
+      const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
+
+      fs.rmSync(tempDir, { recursive: true, force: true });
+
+      return res.status(200).json({
+        success: true,
+        recapUrl: url,
+        message: "Enhanced recap created (no music)",
+        clipsCount: videoSegments.length,
+        templateStyle: templateStyle,
+      });
+    }
+
+    // Pick random music
+    const randomIndex = Math.floor(Math.random() * musicFiles.length);
+    const randomMusicFile = musicFiles[randomIndex];
+    const musicPath = path.join(tempDir, "music.mp3");
+    await randomMusicFile.download({ destination: musicPath });
+    console.log(`[ENHANCED_RECAP] Selected music: ${randomMusicFile.name}`);
+
+    // Loop music to match video duration
+    const musicDurationCommand = `"${ffprobePath}" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${musicPath}"`;
+    const { stdout: musicDurationOutput } = await execAsync(musicDurationCommand);
+    const musicDuration = parseFloat(musicDurationOutput.trim());
+    const loopsNeeded = Math.ceil(videoDuration / musicDuration);
+
+    const loopedAudioPath = path.join(tempDir, "looped_audio.mp3");
+    const loopAudioCommand = `"${ffmpegPath}" -stream_loop ${loopsNeeded - 1} -i "${musicPath}" -t ${videoDuration} -c copy -y "${loopedAudioPath}" 2>&1`;
+    await execAsync(loopAudioCommand, {
+      maxBuffer: 50 * 1024 * 1024,
+      timeout: 120000,
+    });
+
+    // Merge video with audio
+    const outputPath = path.join(tempDir, `final_recap_${Date.now()}.mp4`);
+    const finalMergeCommand = `"${ffmpegPath}" -i "${videoOnlyPath}" -i "${loopedAudioPath}" -c:v copy -c:a aac -shortest -y "${outputPath}" 2>&1`;
+    await execAsync(finalMergeCommand, {
+      maxBuffer: 50 * 1024 * 1024,
+      timeout: 300000,
+    });
+
+    console.log("[ENHANCED_RECAP] Final merge complete");
+
+    // Upload to Firebase Storage
+    const storageFileName = `recaps/${uid || "unknown"}/recap_${weekId}_${Date.now()}.mp4`;
+    const downloadToken = randomUUID();
+
+    await bucket.upload(outputPath, {
+      destination: storageFileName,
+      metadata: {
+        cacheControl: "public, max-age=3600",
+        metadata: { firebaseStorageDownloadTokens: downloadToken },
+      },
+    });
+
+    const encodedPath = encodeURIComponent(storageFileName);
+    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
+
+    console.log(`[ENHANCED_RECAP] Upload successful`);
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+
+    return res.status(200).json({
+      success: true,
+      recapUrl: url,
+      message: "Enhanced recap created successfully",
+      clipsCount: videoSegments.length,
+      templateStyle: templateStyle,
+      duration: `${videoDuration.toFixed(1)}s`,
+    });
+  } catch (error) {
+    console.error("[ENHANCED_RECAP] Error:", error);
+    return res.status(500).json({ error: `Error: ${error.message}` });
+  }
+});
+
+// Helper function to build filter_complex - SIMPLIFIED BUT WITH ZOOM
+function buildFilterComplex(segments, templateStyle, effects) {
+  const filters = [];
+  
+  // Helper function to clean text for FFmpeg drawtext filter
+  function cleanTextForFFmpeg(text) {
+    // Remove emojis
+    let cleaned = text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+    
+    // Replace underscores with spaces (they can cause issues)
+    cleaned = cleaned.replace(/_/g, ' ');
+    
+    // Escape special characters for FFmpeg drawtext filter
+    // Must escape: \ : ' [ ] , ;
+    cleaned = cleaned.replace(/\\/g, '\\\\');  // Backslash first
+    cleaned = cleaned.replace(/:/g, '\\:');    // Colon
+    cleaned = cleaned.replace(/'/g, "\\'");    // Single quote
+    cleaned = cleaned.replace(/\[/g, '\\[');   // Left bracket
+    cleaned = cleaned.replace(/\]/g, '\\]');   // Right bracket
+    cleaned = cleaned.replace(/,/g, '\\,');    // Comma
+    cleaned = cleaned.replace(/;/g, '\\;');    // Semicolon
+    
+    return cleaned;
+  }
+  
+  // Calculate cumulative timestamps for timing-based effects
+  let cumulativeTime = 0;
+  const segmentTimings = segments.map((seg, i) => {
+    // Validate and default duration
+    const duration = (seg.duration && !isNaN(seg.duration)) ? parseFloat(seg.duration) : 5.0;
+    const startTime = cumulativeTime;
+    const endTime = cumulativeTime + duration;
+    cumulativeTime = endTime;
+    console.log(`[FILTER] Segment ${i}: duration=${duration}s, start=${startTime}s, end=${endTime}s`);
+    return { startTime, endTime, duration };
+  });
+  
+  console.log(`[FILTER] Building ${templateStyle} template for ${segments.length} segments`);
+  
+  // ============================================
+  // PHASE 1: PROCESS EACH SEGMENT
+  // Scale + Zoom + Color
+  // ============================================
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const timing = segmentTimings[i];
+    let filterChain = `[${i}:v]`;
+    
+    // 1. ZOOM EFFECT using scale + crop (more reliable than zoompan)
+    if (templateStyle === "highlight") {
+      // Zoom in effect: scale up then crop to size
+      filterChain += `scale=1296:2304,crop=1080:1920:(iw-1080)/2:(ih-1920)/2,`;
+    } else if (templateStyle === "cinematic") {
+      // Subtle zoom: smaller scale
+      filterChain += `scale=1188:2112,crop=1080:1920:(iw-1080)/2:(ih-1920)/2,`;
+    } else {
+      // Timeline: normal scale
+      filterChain += `scale=1080:1920,`;
+    }
+    
+    // 2. COLOR GRADING
+    if (effects.colorFilter && effects.colorFilter !== "none") {
+      if (templateStyle === "highlight") {
+        filterChain += `eq=saturation=1.3:contrast=1.15,`;
+      } else if (templateStyle === "cinematic") {
+        filterChain += `eq=saturation=0.9:gamma=1.1,`;
+      } else {
+        filterChain += `eq=contrast=1.1:saturation=1.05,`;
+      }
+    }
+    
+    filterChain += `format=yuv420p[v${i}]`;
+    filters.push(filterChain);
+  }
+  
+  // ============================================
+  // PHASE 2: CONCATENATE (Simple, reliable)
+  // ============================================
+  if (segments.length > 1) {
+    const inputs = segments.map((_, i) => `[v${i}]`).join("");
+    filters.push(`${inputs}concat=n=${segments.length}:v=1:a=0[vbase]`);
+  } else {
+    filters.push(`[v0]copy[vbase]`);
+  }
+  
+  // ============================================
+  // PHASE 3: TEXT OVERLAYS (DISABLED - causing issues)
+  // ============================================
+  // Text overlays are disabled for now to ensure core functionality works
+  // Once zoom + color + concat work reliably, we can add text back
+  
+  filters.push(`[vbase]copy[vfinal]`);
+  
+  const finalFilter = filters.join(";");
+  console.log(`[FILTER] Generated ${filters.length} filter stages, total length: ${finalFilter.length} chars`);
+  return finalFilter;
+}
+
+console.log("✓ Cloud Functions loaded: mergeVideos, createEnhancedRecap");
+
+/**
  * Cloud Function to swap/replace music on an existing recap video.
  * POST /changeRecapMusic
  * Body: { recapUrl: string, musicFileName: string, weekId: string, uid: string }

@@ -5,7 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
 class EditProfileScreen extends StatefulWidget {
-  const EditProfileScreen({Key? key}) : super(key: key);
+  const EditProfileScreen({super.key});
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -20,6 +20,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _isLoading = false;
   bool _isUploadingImage = false;
   String? _currentPhotoURL;
+  String? _originalPhotoURL; // Track original photo URL to delete it if changed
 
   @override
   void initState() {
@@ -30,6 +31,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void _loadCurrentUserData() {
     _nameController.text = currentUser?.displayName ?? '';
     _currentPhotoURL = currentUser?.photoURL;
+    _originalPhotoURL = currentUser?.photoURL; // Store original to track changes
   }
 
   // Get user initials for avatar
@@ -91,8 +93,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   // Show image source selection dialog
   Future<void> _showImageSourceDialog() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -103,9 +107,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
+                  Text(
                     'Choose Profile Picture',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? const Color(0xFFE0E0E0) : Colors.black),
                   ),
                   const SizedBox(height: 20),
                   ListTile(
@@ -113,7 +117,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       Icons.photo_library,
                       color: Color(0xFF009688),
                     ),
-                    title: const Text('Choose from Gallery'),
+                    title: Text('Choose from Gallery', style: TextStyle(color: isDark ? const Color(0xFFE0E0E0) : Colors.black)),
                     onTap: () {
                       Navigator.pop(context);
                       _pickImage();
@@ -124,7 +128,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       Icons.camera_alt,
                       color: Color(0xFF009688),
                     ),
-                    title: const Text('Take a Photo'),
+                    title: Text('Take a Photo', style: TextStyle(color: isDark ? const Color(0xFFE0E0E0) : Colors.black)),
                     onTap: () {
                       Navigator.pop(context);
                       _takePhoto();
@@ -133,7 +137,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   if (_currentPhotoURL != null || _selectedImage != null)
                     ListTile(
                       leading: const Icon(Icons.delete, color: Colors.red),
-                      title: const Text('Remove Photo'),
+                      title: Text('Remove Photo', style: TextStyle(color: isDark ? const Color(0xFFE0E0E0) : Colors.black)),
                       onTap: () {
                         Navigator.pop(context);
                         setState(() {
@@ -149,6 +153,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  // Delete old profile picture from Firebase Storage
+  Future<void> _deleteOldProfilePicture(String? oldPhotoURL) async {
+    if (oldPhotoURL == null || oldPhotoURL.isEmpty) return;
+
+    try {
+      final userId = currentUser?.uid;
+      if (userId == null) return;
+
+      // Try to extract the path from the URL or use the standard path
+      // Firebase Storage URLs contain the path, but we can also use the standard path
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('profile_pictures')
+          .child('$userId.jpg');
+
+      // Check if file exists and delete it
+      try {
+        await storageRef.getMetadata();
+        // File exists, delete it
+        await storageRef.delete();
+        print('Old profile picture deleted successfully');
+      } catch (e) {
+        // File doesn't exist or error accessing it - that's okay
+        print('Old profile picture not found or already deleted: $e');
+      }
+    } catch (e) {
+      // Log error but don't fail the upload if deletion fails
+      print('Error deleting old profile picture: $e');
+    }
+  }
+
   // Upload image to Firebase Storage
   Future<String?> _uploadImage(File imageFile) async {
     try {
@@ -156,6 +191,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       final userId = currentUser?.uid;
       if (userId == null) return null;
+
+      // Delete old profile picture if it exists (use original photo URL)
+      if (_originalPhotoURL != null && _originalPhotoURL!.isNotEmpty) {
+        await _deleteOldProfilePicture(_originalPhotoURL);
+      }
 
       // Create reference to Firebase Storage
       final storageRef = FirebaseStorage.instance
@@ -201,7 +241,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           return;
         }
       } else if (_currentPhotoURL == null && _selectedImage == null) {
-        // User removed photo
+        // User removed photo - delete old one from storage if it existed
+        if (_originalPhotoURL != null && _originalPhotoURL!.isNotEmpty) {
+          await _deleteOldProfilePicture(_originalPhotoURL);
+        }
         photoURL = null;
       }
 
@@ -263,13 +306,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
+      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF009688)),
+          icon: Icon(Icons.arrow_back, color: isDark ? const Color(0xFF009688) : const Color(0xFF009688)),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -283,7 +327,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         centerTitle: true,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(color: const Color(0xFFEEEEEE), height: 1),
+          child: Container(color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFEEEEEE), height: 1),
         ),
       ),
       body: SingleChildScrollView(
@@ -320,6 +364,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _buildProfilePictureSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Stack(
@@ -394,7 +439,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         const SizedBox(height: 12),
         Text(
           'Tap to change photo',
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+          style: TextStyle(color: isDark ? const Color(0xFFB0B0B0) : Colors.grey.shade600, fontSize: 14),
         ),
       ],
     );
@@ -448,14 +493,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _buildNameInputSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -464,30 +510,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Display Name',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF6B6B6B),
+              color: isDark ? const Color(0xFFB0B0B0) : const Color(0xFF6B6B6B),
             ),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _nameController,
+            style: TextStyle(fontSize: 16, color: isDark ? const Color(0xFFE0E0E0) : Colors.black),
             decoration: InputDecoration(
               hintText: 'Enter your name',
+              hintStyle: TextStyle(color: isDark ? const Color(0xFF757575) : Colors.grey),
               prefixIcon: const Icon(
                 Icons.person_outline,
                 color: Color(0xFF009688),
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderSide: BorderSide(color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderSide: BorderSide(color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -497,9 +545,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
               ),
               filled: true,
-              fillColor: Colors.grey.shade50,
+              fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade50,
             ),
-            style: const TextStyle(fontSize: 16),
           ),
         ],
       ),
@@ -507,14 +554,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _buildEmailSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -525,24 +573,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Email',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF6B6B6B),
+                  color: isDark ? const Color(0xFFB0B0B0) : const Color(0xFF6B6B6B),
                 ),
               ),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
+                  color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Text(
+                child: Text(
                   'Read-only',
-                  style: TextStyle(fontSize: 10, color: Color(0xFF6B6B6B)),
+                  style: TextStyle(fontSize: 10, color: isDark ? const Color(0xFFB0B0B0) : const Color(0xFF6B6B6B)),
                 ),
               ),
             ],
@@ -551,20 +599,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.grey.shade50,
+              color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade50,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
+              border: Border.all(color: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade300),
             ),
             child: Row(
               children: [
-                const Icon(Icons.email_outlined, color: Color(0xFF6B6B6B)),
+                Icon(Icons.email_outlined, color: isDark ? const Color(0xFFB0B0B0) : const Color(0xFF6B6B6B)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     currentUser?.email ?? 'No email',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
-                      color: Color(0xFF6B6B6B),
+                      color: isDark ? const Color(0xFFB0B0B0) : const Color(0xFF6B6B6B),
                     ),
                   ),
                 ),

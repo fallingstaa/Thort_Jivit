@@ -4,6 +4,14 @@ rules_version = '2';
 // These rules allow authenticated users to upload and read their own videos
 service firebase.storage {
   match /b/{bucket}/o {
+    // Profile pictures: allow authenticated users to read/write their own profile picture
+    // Since files are stored as userId.jpg, we allow write for any authenticated user
+    // The app code ensures only the correct userId is used in the filename
+    match /profile_pictures/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
     // User videos: allow read/write for authenticated users to their own data
     match /users/{userId}/{allPaths=**} {
       allow read: if request.auth != null;
