@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:thort_jivit/services/storage_uploader.dart';
 import 'package:thort_jivit/services/video_thumbnail_service.dart';
 import 'package:thort_jivit/services/local_video_storage_service.dart';
@@ -10,6 +11,7 @@ class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final LocalVideoStorageService _localStorage = LocalVideoStorageService();
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   Future<String> uploadVideoAndMetadata({
     String? filePath,
@@ -431,20 +433,44 @@ class FirestoreService {
     return null;
   }
 
+  /// Get server time from Firestore (trusted, cannot be manipulated by device date changes)
+  Future<DateTime> getServerTime() async {
+    try {
+      // Write a temporary document with server timestamp and read it back
+      final tempRef = _firestore.collection('_serverTime').doc('temp');
+      await tempRef.set({'timestamp': FieldValue.serverTimestamp()});
+      final doc = await tempRef.get();
+      final timestamp = doc.data()?['timestamp'] as Timestamp?;
+      await tempRef.delete(); // Clean up
+      
+      if (timestamp != null) {
+        return timestamp.toDate();
+      }
+    } catch (e) {
+      print('[FIRESTORE] Error getting server time: $e');
+    }
+    // Fallback to local time if server time fails (shouldn't happen)
+    return DateTime.now();
+  }
+
   /// Check if user can record for today (only one recording per day allowed)
   /// IMPORTANT: Record type can ONLY be recorded on the actual calendar date (today only)
   /// Cannot record retroactively for past dates
+  /// SECURITY: Uses server time to prevent date manipulation
   Future<bool> canRecordToday({int retryCount = 0}) async {
     final user = _auth.currentUser;
     if (user == null) return false;
     // Admin bypass: always allow
     if (user.email == 'lyya87396@gmail.com') return true;
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    // SECURITY FIX: Use server time instead of local device time
+    final serverNow = await getServerTime();
+    final serverToday = DateTime(serverNow.year, serverNow.month, serverNow.day);
+    
+    print('[FIRESTORE] Server time: $serverNow, Server today: $serverToday');
 
     // Check if there's already a recorded video for today
-    final week = await _getWeekContainingDate(today);
+    final week = await _getWeekContainingDate(serverToday);
     if (week == null) {
       // No week exists, can start a new week by recording
       return true;
@@ -452,10 +478,13 @@ class FirestoreService {
 
     final weekId = week['weekId'] as String;
     final DateTime start = week['startDate'] as DateTime;
-    final diff = today.difference(start).inDays;
+    final diff = serverToday.difference(start).inDays;
 
     // Cannot record if today is not in current week (past/future dates)
-    if (diff < 0 || diff >= 7) return false;
+    if (diff < 0 || diff >= 7) {
+      print('[FIRESTORE] ❌ Cannot record: server date $serverToday is outside week range (diff=$diff)');
+      return false;
+    }
 
     final uid = user.uid;
 
@@ -505,6 +534,7 @@ class FirestoreService {
 
   /// Save a recorded video with metadata (can only record once per day, for today only)
   /// NEW: Saves locally first, defers Firebase upload to background sync
+  /// SECURITY: Uses server time to prevent date manipulation
   Future<String> saveRecordedVideo({
     String? filePath,
     Uint8List? bytes,
@@ -520,31 +550,34 @@ class FirestoreService {
       throw Exception('User not signed in');
     }
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    // SECURITY FIX: Use server time instead of local device time
+    final serverNow = await getServerTime();
+    final serverToday = DateTime(serverNow.year, serverNow.month, serverNow.day);
     final uid = user.uid;
+    
+    print('[FIRESTORE] Server time: $serverNow, Server today: $serverToday');
 
-    // Check if can record today
+    // Check if can record today (validates against server time)
     final canRecord = await canRecordToday();
     if (!canRecord) {
       throw Exception('Cannot record: already recorded today or invalid date');
     }
 
-    // Get or create week for today
-    var week = await _getWeekContainingDate(today);
+    // Get or create week for today (using server date)
+    var week = await _getWeekContainingDate(serverToday);
     String weekId;
     DateTime startDate;
 
     if (week == null) {
-      // Create new week starting today
-      weekId = await createWeek(today);
-      startDate = today;
+      // Create new week starting today (server date)
+      weekId = await createWeek(serverToday);
+      startDate = serverToday;
     } else {
       weekId = week['weekId'] as String;
       startDate = week['startDate'] as DateTime;
     }
 
-    final diff = today.difference(startDate).inDays;
+    final diff = serverToday.difference(startDate).inDays;
     final dayIndex = diff + 1;
 
     print('[FIRESTORE] Recording for weekId: $weekId, dayIndex: $dayIndex');
@@ -614,7 +647,7 @@ class FirestoreService {
       'storagePath': storagePath,
       'isCompressed': false, // NEW
       'originalSize': fileSize, // NEW
-      'timestamp': Timestamp.fromDate(timestamp ?? today), // Always set timestamp for calendar
+      'timestamp': Timestamp.fromDate(timestamp ?? serverToday), // Always set timestamp for calendar (using server date)
     };
 
     // timestamp is now always set above, so this is no longer needed
@@ -1107,7 +1140,7 @@ class FirestoreService {
   }
 
   /// Calculate the current streak for the active week.
-  /// Streak = total count of days that have at least one uploaded video.
+  /// Streak = total count of days that have at least one valid video (recorded or uploaded).
   Future<int> calculateCurrentStreak() async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -1133,38 +1166,66 @@ class FirestoreService {
         .collection('videos');
 
     int streak = 0;
-    // Count all days that have valid uploaded videos
-    for (int dayIdx = 1; dayIdx <= 7; dayIdx++) {
-      final doc = await videosCol.doc('day$dayIdx').get();
-
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
-        final status = data['status'];
-        final storageUrl = data['storageDownloadUrl'];
-
-        print('[STREAK] Day $dayIdx - exists: true');
-        print('[STREAK]   status: $status');
-        print(
-          '[STREAK]   storageUrl: ${storageUrl != null ? "present (${(storageUrl as String).length} chars)" : "null"}',
-        );
-
-        // Only count as a valid video if it has uploaded status or storage download URL
-        final hasUploadedVideo =
-            status == 'uploaded' ||
-            (storageUrl != null && (storageUrl as String).isNotEmpty);
-
-        if (hasUploadedVideo) {
-          streak++;
-          print('[STREAK]   ✓ Valid video - streak now: $streak');
-        } else {
-          print('[STREAK]   ✗ No valid uploaded video - skipping');
-        }
+    final Set<int> daysWithVideos = {}; // Track unique days that have videos
+    
+    // Get ALL videos in the week (not just specific document IDs)
+    final allVideosSnapshot = await videosCol.get();
+    
+    print('[STREAK] Found ${allVideosSnapshot.docs.length} total video documents');
+    
+    // Process all videos and group by dayIndex
+    for (final videoDoc in allVideosSnapshot.docs) {
+      final data = videoDoc.data();
+      final dayIndex = data['dayIndex'] as int?;
+      
+      if (dayIndex == null || dayIndex < 1 || dayIndex > 7) {
+        print('[STREAK] ⚠️ Video ${videoDoc.id} has invalid dayIndex: $dayIndex');
+        continue;
+      }
+      
+      // Skip if we already counted this day
+      if (daysWithVideos.contains(dayIndex)) {
+        continue;
+      }
+      
+      final status = data['status'];
+      final uploadStatus = data['uploadStatus'];
+      final videoType = data['videoType'];
+      final storageUrl = data['storageDownloadUrl'];
+      final localPath = data['localPath'];
+      
+      print('[STREAK] Checking video ${videoDoc.id} for dayIndex $dayIndex');
+      print('[STREAK]   videoType: $videoType');
+      print('[STREAK]   status: $status');
+      print('[STREAK]   uploadStatus: $uploadStatus');
+      print('[STREAK]   hasStorageUrl: ${storageUrl != null && (storageUrl as String).isNotEmpty}');
+      print('[STREAK]   hasLocalPath: ${localPath != null && (localPath as String).isNotEmpty}');
+      
+      // Count as valid video if:
+      // 1. Has uploaded status (old format)
+      // 2. Has storage download URL (uploaded to cloud)
+      // 3. Has uploadStatus='pending' or 'uploaded' (new format)
+      // 4. Has localPath (recorded video, even if not uploaded yet)
+      // 5. Is a recorded video type (even if missing other fields)
+      final hasUploadedVideo = status == 'uploaded' || 
+          (storageUrl != null && (storageUrl as String).isNotEmpty);
+      
+      final hasPendingOrUploaded = uploadStatus == 'pending' || uploadStatus == 'uploaded';
+      final hasLocalVideo = localPath != null && (localPath as String).isNotEmpty;
+      final isRecordedType = videoType == 'recorded';
+      
+      final isValidVideo = hasUploadedVideo || hasPendingOrUploaded || hasLocalVideo || isRecordedType;
+      
+      if (isValidVideo) {
+        daysWithVideos.add(dayIndex);
+        streak++;
+        print('[STREAK]   ✓ Day $dayIndex has valid video - streak now: $streak');
       } else {
-        print('[STREAK] Day $dayIdx - no document - skipping');
+        print('[STREAK]   ✗ Day $dayIndex video is not valid - skipping');
       }
     }
 
-    print('[STREAK] Final streak: $streak');
+    print('[STREAK] Final streak: $streak (days with videos: ${daysWithVideos.toList()..sort()})');
     return streak;
   }
 
@@ -2019,6 +2080,261 @@ class FirestoreService {
     } catch (e) {
       print('[FIRESTORE] Error fetching favorite videos: $e');
       rethrow;
+    }
+  }
+
+  /// Mark the current user as premium / free in their user document.
+  Future<void> setUserPremium(bool isPremium) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final uid = user.uid;
+    print('[FIRESTORE] Setting user premium status to: $isPremium for uid=$uid');
+
+    final updateData = <String, dynamic>{
+      'isPremium': isPremium,
+    };
+
+    if (isPremium) {
+      updateData['premiumSince'] = FieldValue.serverTimestamp();
+    }
+
+    await _firestore.collection('users').doc(uid).set(
+          updateData,
+          SetOptions(merge: true),
+        );
+  }
+
+  /// Check if the current user is premium.
+  Future<bool> isUserPremium() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    final uid = user.uid;
+    final doc = await _firestore.collection('users').doc(uid).get();
+    if (!doc.exists) return false;
+    final data = doc.data();
+    final value = data?['isPremium'];
+    if (value is bool) return value;
+    return false;
+  }
+
+  /// Get premium subscription info including premiumSince date.
+  Future<Map<String, dynamic>?> getPremiumInfo() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+
+    final uid = user.uid;
+    final doc = await _firestore.collection('users').doc(uid).get();
+    if (!doc.exists) return null;
+    
+    final data = doc.data();
+    final isPremium = data?['isPremium'] as bool? ?? false;
+    final premiumSince = data?['premiumSince'] as Timestamp?;
+    
+    return {
+      'isPremium': isPremium,
+      'premiumSince': premiumSince?.toDate(),
+    };
+  }
+
+  /// Delete videos that were recorded before the correct date (using server timestamps)
+  /// This fixes the issue where users changed their device date to record videos early
+  /// Returns: {deletedCount: int, deletedVideos: List<String>}
+  Future<Map<String, dynamic>> deleteInvalidRecordedVideos() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      print('[FIRESTORE] No user signed in for cleanup');
+      return {'deletedCount': 0, 'deletedVideos': []};
+    }
+
+    final uid = user.uid;
+    print('[FIRESTORE] Starting cleanup of invalid recorded videos...');
+
+    // Get server time to determine what "today" actually is
+    final serverNow = await getServerTime();
+    final serverToday = DateTime(serverNow.year, serverNow.month, serverNow.day);
+    print('[FIRESTORE] Server today: $serverToday');
+
+    int deletedCount = 0;
+    List<String> deletedVideoIds = [];
+
+    try {
+      // Get all weeks
+      final weeksSnapshot = await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('weeks')
+          .get();
+
+      for (final weekDoc in weeksSnapshot.docs) {
+        final weekId = weekDoc.id;
+        final weekData = weekDoc.data();
+        final startDate = (weekData['startDate'] as Timestamp?)?.toDate();
+        
+        if (startDate == null) continue;
+
+        // Get all recorded videos in this week
+        final videosSnapshot = await _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('weeks')
+            .doc(weekId)
+            .collection('videos')
+            .where('videoType', isEqualTo: 'recorded')
+            .get();
+
+        for (final videoDoc in videosSnapshot.docs) {
+          final data = videoDoc.data();
+          // Try to get uploadedAt (server timestamp) first, fallback to timestamp if not available
+          final uploadedAt = data['uploadedAt'] as Timestamp?;
+          final timestamp = data['timestamp'] as Timestamp?;
+          final dayIndex = data['dayIndex'] as int?;
+          
+          if (dayIndex == null) continue;
+          
+          // Use uploadedAt if available (more reliable), otherwise use timestamp
+          final recordTimestamp = uploadedAt ?? timestamp;
+          if (recordTimestamp == null) {
+            // If no timestamp at all, skip this video (might be corrupted data)
+            print('[FIRESTORE] ⚠️ Video ${videoDoc.id} has no timestamp, skipping');
+            continue;
+          }
+
+          // Calculate what date this video should have been recorded on
+          final expectedDate = startDate.add(Duration(days: dayIndex - 1));
+          final expectedDateOnly = DateTime(expectedDate.year, expectedDate.month, expectedDate.day);
+          
+          // Get the actual server timestamp when video was recorded
+          final recordedDate = recordTimestamp.toDate();
+          final recordedDateOnly = DateTime(recordedDate.year, recordedDate.month, recordedDate.day);
+
+          // If video was recorded before the expected date, it's invalid
+          if (recordedDateOnly.isBefore(expectedDateOnly)) {
+            print('[FIRESTORE] ❌ Invalid video found: ${videoDoc.id}');
+            print('[FIRESTORE]   Expected date: $expectedDateOnly');
+            print('[FIRESTORE]   Recorded date: $recordedDateOnly');
+            print('[FIRESTORE]   Day index: $dayIndex');
+            print('[FIRESTORE]   Using timestamp: ${uploadedAt != null ? "uploadedAt" : "timestamp"}');
+
+            // Delete the video document
+            await videoDoc.reference.delete();
+            
+            // Delete local file if exists
+            final localPath = data['localPath'] as String?;
+            if (localPath != null && localPath.isNotEmpty) {
+              try {
+                final localFile = File(localPath);
+                if (await localFile.exists()) {
+                  await localFile.delete();
+                  print('[FIRESTORE] Deleted local file: $localPath');
+                }
+              } catch (e) {
+                print('[FIRESTORE] Error deleting local file: $e');
+              }
+            }
+
+            // Delete from Firebase Storage if exists
+            final storagePath = data['storagePath'] as String?;
+            if (storagePath != null && storagePath.isNotEmpty) {
+              try {
+                final ref = _storage.ref().child(storagePath);
+                await ref.delete();
+                print('[FIRESTORE] Deleted storage file: $storagePath');
+              } catch (e) {
+                print('[FIRESTORE] Error deleting storage file: $e');
+              }
+            }
+
+            deletedCount++;
+            deletedVideoIds.add(videoDoc.id);
+          }
+        }
+      }
+
+      // Recalculate streak after cleanup
+      if (deletedCount > 0) {
+        print('[FIRESTORE] Recalculating streak after cleanup...');
+        await updateUserStreak();
+      }
+
+      print('[FIRESTORE] Cleanup complete: deleted $deletedCount invalid videos');
+      return {
+        'deletedCount': deletedCount,
+        'deletedVideos': deletedVideoIds,
+      };
+    } catch (e) {
+      print('[FIRESTORE] Error during cleanup: $e');
+      return {
+        'deletedCount': deletedCount,
+        'deletedVideos': deletedVideoIds,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// Validate and clean up invalid recorded videos on app startup
+  /// Call this when the app starts to ensure data integrity
+  Future<void> validateAndCleanupRecordedVideos() async {
+    print('[FIRESTORE] Starting validation and cleanup of recorded videos...');
+    final result = await deleteInvalidRecordedVideos();
+    print('[FIRESTORE] Validation complete: ${result['deletedCount']} videos deleted');
+  }
+
+  /// Delete all source videos in Firebase Storage for a given week.
+  /// This is used after a weekly recap has been successfully generated so that
+  /// only the merged recap video remains in the cloud.
+  Future<void> deleteWeekSourceVideosFromStorage(String weekId) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final uid = user.uid;
+    print('[FIRESTORE] Deleting source videos from storage for weekId: $weekId');
+
+    try {
+      final videosCol = _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('weeks')
+          .doc(weekId)
+          .collection('videos');
+
+      final videosSnapshot = await videosCol.get();
+      for (final videoDoc in videosSnapshot.docs) {
+        final data = videoDoc.data();
+        final storagePath = data['storagePath'] as String?;
+        if (storagePath == null || storagePath.isEmpty) {
+          continue;
+        }
+
+        try {
+          final ref = _storage.ref().child(storagePath);
+          await ref.delete();
+          print('[FIRESTORE] Deleted storage object: $storagePath');
+        } catch (e) {
+          // Do not fail the whole cleanup if a single delete fails
+          print(
+            '[FIRESTORE] Error deleting storage object "$storagePath": $e',
+          );
+        }
+      }
+
+      // Optionally mark the week as having its sources deleted
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('weeks')
+          .doc(weekId)
+          .set(
+        {
+          'sourcesDeleted': true,
+        },
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      print(
+        '[FIRESTORE] Error deleting week source videos from storage: $e',
+      );
     }
   }
 }

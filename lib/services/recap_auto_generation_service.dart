@@ -51,7 +51,14 @@ class RecapAutoGenerationService {
       final weekId = activeWeek['weekId'] as String;
       print('[AUTO_RECAP] Processing week: $weekId');
 
-      // Get all uploaded videos for the week
+      // Step 1: Upload only the pending videos for this week so they can be used
+      // for recap generation. This ensures that even free users only upload the
+      // minimum clips required for the weekly recap.
+      final uploadResult =
+          await _firestoreService.uploadPendingVideosForWeek(weekId);
+      print('[AUTO_RECAP] Pending upload result: $uploadResult');
+
+      // Step 2: Get all uploaded videos for the week (after the targeted upload)
       final allVideos = await _firestoreService.getAllUploadedVideos();
       final weekVideos = allVideos
           .where((v) => v['weekId'] == weekId && v['uploadStatus'] == 'uploaded')
@@ -107,6 +114,10 @@ class RecapAutoGenerationService {
 
         // Show notification
         await _showSuccessNotification(weekId);
+
+        // Delete source clips from Firebase Storage so that only the merged
+        // weekly recap video remains in the cloud.
+        await _firestoreService.deleteWeekSourceVideosFromStorage(weekId);
 
         print('[AUTO_RECAP] Recap generated successfully');
         return true;

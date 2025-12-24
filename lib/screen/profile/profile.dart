@@ -11,6 +11,8 @@ import 'storage_settings_screen.dart';
 import 'favorites_screen.dart';
 import 'help_support_screen.dart';
 import 'privacy_policy_screen.dart';
+import 'premium_subscription_screen.dart';
+import '../../services/firestore_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -23,6 +25,8 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   bool notificationsEnabled = true;
   bool _isLoadingNotificationStatus = true;
   String _appVersion = 'Loading...';
+  bool _isPremium = false;
+  DateTime? _premiumSince;
 
   // Get current user dynamically
   User? get currentUser => FirebaseAuth.instance.currentUser;
@@ -36,7 +40,63 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _loadNotificationStatus();
     _loadAppVersion();
+    _loadPremiumStatus();
     _reloadUserProfile(); // Reload user data to sync profile picture across devices
+  }
+
+  /// Load premium status
+  Future<void> _loadPremiumStatus() async {
+    try {
+      final firestoreService = FirestoreService();
+      final premiumInfo = await firestoreService.getPremiumInfo();
+      if (mounted) {
+        setState(() {
+          _isPremium = premiumInfo?['isPremium'] as bool? ?? false;
+          _premiumSince = premiumInfo?['premiumSince'] as DateTime?;
+        });
+      }
+    } catch (e) {
+      print('[PROFILE] Error loading premium status: $e');
+    }
+  }
+
+  /// Get premium renewal date (30 days from premiumSince)
+  String get _premiumRenewalDate {
+    if (_premiumSince == null) {
+      // If no premiumSince date, assume it was today (fallback)
+      final renewalDate = DateTime.now().add(const Duration(days: 30));
+      final months = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+      return '${months[renewalDate.month - 1]} ${renewalDate.day}, ${renewalDate.year}';
+    }
+    final renewalDate = _premiumSince!.add(const Duration(days: 30));
+    final months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${months[renewalDate.month - 1]} ${renewalDate.day}, ${renewalDate.year}';
   }
 
   @override
@@ -427,15 +487,64 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        '👑',
-                                        style: TextStyle(
-                                          fontSize: isTablet ? 18 : 16,
-                                        ),
-                                      ),
                                     ],
                                   ),
+                                  if (_isPremium) ...[
+                                    SizedBox(height: isTablet ? 10 : 8),
+                                    Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: isTablet ? 14 : 12,
+                                        vertical: isTablet ? 7 : 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFFFD700),
+                                            Color(0xFFFFA500),
+                                          ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        borderRadius: BorderRadius.circular(25),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFFFD700)
+                                                .withOpacity(0.4),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 3),
+                                            spreadRadius: 0,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(0.3),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const FaIcon(
+                                              FontAwesomeIcons.star,
+                                              color: Colors.white,
+                                              size: 12,
+                                            ),
+                                          ),
+                                          SizedBox(width: isTablet ? 8 : 6),
+                                          Text(
+                                            'PRO',
+                                            style: TextStyle(
+                                              fontSize: isTablet ? 14 : 13,
+                                              fontWeight: FontWeight.w800,
+                                              color: Colors.white,
+                                              letterSpacing: 1.5,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                   SizedBox(height: isTablet ? 6 : 5),
                                   Text(
                                     userEmail,
@@ -607,6 +716,74 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                         builder: (context) => const StorageSettingsScreen(),
                       ),
                     );
+                  },
+                ),
+
+                SizedBox(height: isTablet ? 12 : 10),
+
+                _buildSettingItem(
+                  icon: FontAwesomeIcons.star,
+                  iconColor: const Color(0xFF009688),
+                  title: _isPremium ? 'Premium Subscription' : 'Go Premium',
+                  subtitle: _isPremium
+                      ? 'Expires $_premiumRenewalDate • View details'
+                      : 'Unlock cloud backup & weekly recaps',
+                  isTablet: isTablet,
+                  horizontalPadding: horizontalPadding,
+                  trailing: _isPremium
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF009688).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFF009688).withOpacity(0.3),
+                            ),
+                          ),
+                          child: const Text(
+                            'ACTIVE',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF009688),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        )
+                      : Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF009688).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFF009688).withOpacity(0.3),
+                            ),
+                          ),
+                          child: const Text(
+                            'Upgrade',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF009688),
+                            ),
+                          ),
+                        ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PremiumSubscriptionScreen(),
+                      ),
+                    ).then((_) {
+                      // Reload premium status after returning
+                      _loadPremiumStatus();
+                    });
                   },
                 ),
 
