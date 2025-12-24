@@ -40,6 +40,7 @@ class _RecordScreenState extends State<RecordScreen> {
   String? _recordedVideoPath;
   final List<String> _segmentPaths = [];
   bool _isProcessingVideo = false;
+  String? _cameraError;
 
   @override
   void initState() {
@@ -55,17 +56,46 @@ class _RecordScreenState extends State<RecordScreen> {
 
   Future<void> _initializeCamera() async {
     try {
+      // Clear any previous error
+      if (mounted) {
+        setState(() {
+          _cameraError = null;
+        });
+      }
+
       // Request camera permission
       final cameraStatus = await Permission.camera.request();
       final microphoneStatus = await Permission.microphone.request();
 
       if (cameraStatus != PermissionStatus.granted ||
           microphoneStatus != PermissionStatus.granted) {
+        if (mounted) {
+          setState(() {
+            if (cameraStatus.isPermanentlyDenied) {
+              _cameraError =
+                  'Camera permission is required. Please grant camera access in settings.';
+            } else if (microphoneStatus.isPermanentlyDenied) {
+              _cameraError =
+                  'Microphone permission is required. Please grant microphone access in settings.';
+            } else if (cameraStatus != PermissionStatus.granted) {
+              _cameraError =
+                  'Camera permission is required to start recording.';
+            } else if (microphoneStatus != PermissionStatus.granted) {
+              _cameraError =
+                  'Microphone permission is required to record audio.';
+            }
+          });
+        }
         return;
       }
 
       cameras = await availableCameras();
       if (cameras == null || cameras!.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _cameraError = 'No cameras available on this device';
+          });
+        }
         return;
       }
 
@@ -83,12 +113,16 @@ class _RecordScreenState extends State<RecordScreen> {
       await _initializeControllerFuture;
 
       if (mounted) {
-        setState(() {});
+        setState(() {
+          _cameraError = null;
+        });
       }
     } catch (e) {
       print('Error initializing camera: $e');
       if (mounted) {
-        setState(() {});
+        setState(() {
+          _cameraError = 'Failed to initialize camera: ${e.toString()}';
+        });
       }
     }
   }
@@ -126,7 +160,7 @@ class _RecordScreenState extends State<RecordScreen> {
         });
 
         String finalPath;
-        
+
         // On web, skip FFmpeg processing and use the recorded path directly
         if (kIsWeb || _segmentPaths.length == 1) {
           finalPath = _segmentPaths.first;
@@ -307,6 +341,80 @@ class _RecordScreenState extends State<RecordScreen> {
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
+          // Show permission/camera error if any
+          if (_cameraError != null) {
+            return Scaffold(
+              backgroundColor: Colors.black,
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        size: 80,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Camera Error',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _cameraError!,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _cameraError = null;
+                                _initializeCamera();
+                              });
+                            },
+                            child: const Text('Retry'),
+                          ),
+                          const SizedBox(width: 16),
+                          OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: Colors.white),
+                            ),
+                            child: const Text('Back'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () async {
+                          await openAppSettings();
+                        },
+                        child: const Text(
+                          'Open App Settings',
+                          style: TextStyle(color: Colors.blue),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
+
           if (snapshot.connectionState == ConnectionState.done &&
               _controller != null &&
               _controller!.value.isInitialized) {
@@ -513,7 +621,11 @@ class _RecordScreenState extends State<RecordScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.error_outline, size: 80, color: Colors.red),
+                    const Icon(
+                      Icons.error_outline,
+                      size: 80,
+                      color: Colors.red,
+                    ),
                     const SizedBox(height: 16),
                     const Text(
                       'Camera Error',

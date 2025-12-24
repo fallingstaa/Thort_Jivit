@@ -14,12 +14,15 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Initialize notification service
-    await NotificationService().initialize();
-
-    // Initialize and schedule background sync service
+    // Initialize background sync service FIRST (initializes WorkManager)
+    // This must happen before NotificationService which uses WorkManager
     final syncService = BackgroundSyncService();
     await syncService.initialize();
+
+    // Initialize notification service (uses WorkManager for scheduling)
+    await NotificationService().initialize();
+
+    // Schedule background tasks
     await syncService.scheduleNightlySync();
     await syncService.scheduleWeeklyCompression();
     await syncService.scheduleWeeklyRecapGeneration();
