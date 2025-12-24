@@ -17,6 +17,7 @@ import 'package:thort_jivit/models/video.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:thort_jivit/widgets/video_thumbnail_widget.dart';
+import 'package:thort_jivit/screen/payment/aba_payment_screen.dart';
 
 class VideosScreen extends StatefulWidget {
   const VideosScreen({super.key});
@@ -57,6 +58,7 @@ class _VideosScreenState extends State<VideosScreen>
   Map<String, dynamic> _syncStats = {};
   Map<String, dynamic> _storageUsage = {};
   DateTime? _lastRefreshTime;
+  bool _isPremium = false;
 
   @override
   void initState() {
@@ -232,11 +234,13 @@ class _VideosScreenState extends State<VideosScreen>
     try {
       final stats = await _syncService.getSyncStats();
       final usage = await _localStorage.getStorageUsage();
+      final isPremium = await _firestoreService.isUserPremium();
       
       if (mounted) {
         setState(() {
           _syncStats = stats;
           _storageUsage = usage;
+          _isPremium = isPremium;
         });
       }
     } catch (e) {
@@ -255,6 +259,37 @@ class _VideosScreenState extends State<VideosScreen>
   }
 
   Future<void> _forceSyncNow() async {
+    // Check if user is premium
+    final isPremium = await _firestoreService.isUserPremium();
+    if (!isPremium) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Cloud sync is a premium feature. Upgrade to sync your videos to the cloud.',
+            ),
+            backgroundColor: Colors.orange,
+            action: SnackBarAction(
+              label: 'Go Premium',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ABAPaymentScreen(),
+                  ),
+                ).then((_) {
+                  // Reload premium status after returning
+                  _loadSyncStats();
+                });
+              },
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       // Show loading dialog
       showDialog(
@@ -539,48 +574,50 @@ class _VideosScreenState extends State<VideosScreen>
         ),
         centerTitle: true,
         actions: [
-          // Sync status indicator
-          if (_syncStats['pending'] != null && _syncStats['pending'] > 0)
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  const FaIcon(FontAwesomeIcons.cloudArrowUp, size: 16, color: Colors.orange),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${_syncStats['pending']}',
-                    style: const TextStyle(
-                      color: Colors.orange,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+          // Sync status indicator and button - only show for premium users
+          if (_isPremium) ...[
+            if (_syncStats['pending'] != null && _syncStats['pending'] > 0)
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const FaIcon(FontAwesomeIcons.cloudArrowUp, size: 16, color: Colors.orange),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_syncStats['pending']}',
+                      style: const TextStyle(
+                        color: Colors.orange,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+            // Force sync button - Uploads pending videos to cloud
+            Tooltip(
+              message: 'Sync Now\nUpload pending videos to cloud storage',
+              child: IconButton(
+                icon: const FaIcon(
+                  FontAwesomeIcons.arrowsRotate,
+                  size: 18,
+                  color: Color(0xFF009688),
+                ),
+                padding: const EdgeInsets.all(8),
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+                onPressed: _forceSyncNow,
               ),
             ),
-          // Force sync button - Uploads pending videos to cloud
-          Tooltip(
-            message: 'Sync Now\nUpload pending videos to cloud storage',
-            child: IconButton(
-              icon: const FaIcon(
-                FontAwesomeIcons.arrowsRotate,
-                size: 18,
-                color: Color(0xFF009688),
-              ),
-              padding: const EdgeInsets.all(8),
-              constraints: const BoxConstraints(
-                minWidth: 36,
-                minHeight: 36,
-              ),
-              onPressed: _forceSyncNow,
-            ),
-          ),
+          ],
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),

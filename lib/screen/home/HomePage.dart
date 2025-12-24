@@ -14,7 +14,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // Get current user from Firebase
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final FirestoreService _firestoreService = FirestoreService();
@@ -31,9 +31,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadStreak();
     _loadWeekData();
     _checkCanRecord();
+    
+    // SECURITY FIX: Validate and cleanup invalid recorded videos on startup
+    // This removes videos that were recorded before the correct date
+    _validateAndCleanupVideos();
     
     // Setup guide button pulsing animation
     _guideButtonController = AnimationController(
@@ -52,8 +57,40 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _guideButtonController.dispose();
     super.dispose();
+  }
+  
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Refresh streak when app comes to foreground
+    if (state == AppLifecycleState.resumed) {
+      _refreshStreak();
+    }
+  }
+  
+  /// Refresh streak by recalculating and reloading
+  Future<void> _refreshStreak() async {
+    try {
+      // Recalculate streak to ensure it's accurate
+      await _firestoreService.updateUserStreak();
+      // Reload from user document
+      await _loadStreak();
+    } catch (e) {
+      print('[HOMEPAGE] Error refreshing streak: $e');
+    }
+  }
+  
+  /// Validate and cleanup invalid recorded videos (recorded before correct date)
+  Future<void> _validateAndCleanupVideos() async {
+    try {
+      await _firestoreService.validateAndCleanupRecordedVideos();
+    } catch (e) {
+      print('[HOMEPAGE] Error during video validation: $e');
+      // Don't block the UI if cleanup fails
+    }
   }
 
   Future<void> _loadStreak() async {
@@ -863,13 +900,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                                     });
                                   }
                                   
-                                  // Wait for Firestore to be ready
-                                  await Future.delayed(const Duration(milliseconds: 1000));
+                                  // Wait for Firestore to be ready (eventual consistency)
+                                  await Future.delayed(const Duration(milliseconds: 1500));
                                   
                                   // Refresh when coming back
                                   if (mounted) {
                                     _checkCanRecord();
                                     _loadWeekData();
+                                    // Recalculate streak to ensure it's up to date
+                                    await _firestoreService.updateUserStreak();
                                     _loadStreak();
                                   }
                                 });
@@ -998,6 +1037,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       ),
     );
   }
+
 }
 
 class DayCheckmark extends StatelessWidget {

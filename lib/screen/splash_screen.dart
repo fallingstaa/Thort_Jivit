@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main_navigation.dart';
 import 'welcome_screen.dart';
+import '../services/firestore_service.dart';
 // Removed flutter_svg import, using PNG instead
 
 class SplashScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   void initState() {
@@ -25,6 +27,9 @@ class _SplashScreenState extends State<SplashScreen>
     );
     _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
     _controller.forward();
+
+    // Cleanup invalid videos immediately when app starts (if user is signed in)
+    _cleanupInvalidVideos();
 
     Future.delayed(const Duration(seconds: 4), () {
       final user = FirebaseAuth.instance.currentUser;
@@ -40,6 +45,24 @@ class _SplashScreenState extends State<SplashScreen>
         );
       }
     });
+  }
+
+  /// Cleanup invalid recorded videos (recorded before correct date)
+  Future<void> _cleanupInvalidVideos() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        print('[SPLASH] Starting cleanup of invalid recorded videos...');
+        final result = await _firestoreService.deleteInvalidRecordedVideos();
+        print('[SPLASH] Cleanup complete: ${result['deletedCount']} videos deleted');
+        if (result['deletedCount'] > 0) {
+          print('[SPLASH] Deleted video IDs: ${result['deletedVideos']}');
+        }
+      }
+    } catch (e) {
+      print('[SPLASH] Error during video cleanup: $e');
+      // Don't block app startup if cleanup fails
+    }
   }
 
   @override

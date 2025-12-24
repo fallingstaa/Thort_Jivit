@@ -10,6 +10,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:thort_jivit/firebase_options.dart';
 import 'local_video_storage_service.dart';
 import 'notification_service.dart';
+import 'firestore_service.dart';
 
 /// Background service for syncing local videos to Firebase
 class BackgroundSyncService {
@@ -21,6 +22,7 @@ class BackgroundSyncService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final LocalVideoStorageService _localStorage = LocalVideoStorageService();
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
+  final FirestoreService _firestoreService = FirestoreService();
 
   /// Initialize background sync service
   Future<void> initialize() async {
@@ -130,6 +132,33 @@ class BackgroundSyncService {
         return {
           'success': false,
           'message': 'User not signed in',
+          'uploaded': 0,
+          'failed': 0,
+        };
+      }
+
+      // SECURITY: Cleanup invalid recorded videos before sync
+      try {
+        print('[BACKGROUND_SYNC] Cleaning up invalid recorded videos...');
+        final cleanupResult = await _firestoreService.deleteInvalidRecordedVideos();
+        if (cleanupResult['deletedCount'] > 0) {
+          print('[BACKGROUND_SYNC] Cleaned up ${cleanupResult['deletedCount']} invalid videos');
+        }
+      } catch (e) {
+        print('[BACKGROUND_SYNC] Error during video cleanup: $e');
+        // Continue with sync even if cleanup fails
+      }
+
+      // Only premium users are allowed to sync videos to Firebase in background.
+      final isPremium = await _firestoreService.isUserPremium();
+      if (!isPremium) {
+        print(
+          '[BACKGROUND_SYNC] User is not premium. Skipping cloud sync for free user.',
+        );
+        return {
+          'success': false,
+          'message':
+              'Cloud sync is available for premium users only. Your videos are stored safely on this device.',
           'uploaded': 0,
           'failed': 0,
         };

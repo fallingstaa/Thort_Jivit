@@ -29,50 +29,55 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
 
   Future<void> _initializeWebView() async {
     if (kIsWeb) return;
-    
+
     try {
-      _controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onPageStarted: (String url) {
-              if (mounted) {
-                setState(() {
-                  _isLoading = true;
-                  _webViewFailed = false;
-                });
-              }
-            },
-            onPageFinished: (String url) {
-              if (mounted) {
-                setState(() {
-                  _isLoading = false;
-                });
-              }
-            },
-            onWebResourceError: (WebResourceError error) {
-              if (mounted) {
-                setState(() {
-                  _isLoading = false;
-                  _webViewFailed = true;
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Error loading page: ${error.description}'),
-                    backgroundColor: Colors.red,
-                    action: SnackBarAction(
-                      label: 'Open in Browser',
-                      textColor: Colors.white,
-                      onPressed: _openInBrowser,
-                    ),
-                  ),
-                );
-              }
-            },
-          ),
-        )
-        ..loadRequest(Uri.parse('https://www.google.com'));
-      
+      _controller =
+          WebViewController()
+            ..setJavaScriptMode(JavaScriptMode.unrestricted)
+            ..setNavigationDelegate(
+              NavigationDelegate(
+                onPageStarted: (String url) {
+                  if (mounted) {
+                    setState(() {
+                      _isLoading = true;
+                      _webViewFailed = false;
+                    });
+                  }
+                },
+                onPageFinished: (String url) {
+                  if (mounted) {
+                    setState(() {
+                      _isLoading = false;
+                    });
+                  }
+                },
+                onWebResourceError: (WebResourceError error) {
+                  if (mounted) {
+                    setState(() {
+                      _isLoading = false;
+                      _webViewFailed = true;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Error loading page: ${error.description}',
+                        ),
+                        backgroundColor: Colors.red,
+                        action: SnackBarAction(
+                          label: 'Open in Browser',
+                          textColor: Colors.white,
+                          onPressed: _openInBrowser,
+                        ),
+                      ),
+                    );
+                  }
+                },
+              ),
+            )
+            ..loadRequest(
+              Uri.parse('https://thort-jivit.vercel.app/privacy-policy'),
+            );
+
       // Wait a bit to see if initialization succeeds
       await Future.delayed(const Duration(milliseconds: 500));
     } catch (e) {
@@ -157,129 +162,129 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
           ),
         ),
       ),
-      body: kIsWeb
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const FaIcon(
-                    FontAwesomeIcons.globe,
-                    size: 64,
-                    color: Color(0xFF009688),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Opening in browser...',
-                    style: TextStyle(
-                      color: isDark
-                          ? const Color(0xFFE0E0E0)
-                          : const Color(0xFF1A1A1A),
-                      fontSize: isTablet ? 18 : 16,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : _webViewFailed
+      body:
+          kIsWeb
               ? Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(isTablet ? 32 : 24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const FaIcon(
-                          FontAwesomeIcons.triangleExclamation,
-                          size: 64,
-                          color: Color(0xFFE53935),
-                        ),
-                        const SizedBox(height: 24),
-                        Text(
-                          'Unable to load webview',
-                          style: TextStyle(
-                            color: isDark
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const FaIcon(
+                      FontAwesomeIcons.globe,
+                      size: 64,
+                      color: Color(0xFF009688),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Opening in browser...',
+                      style: TextStyle(
+                        color:
+                            isDark
                                 ? const Color(0xFFE0E0E0)
                                 : const Color(0xFF1A1A1A),
-                            fontSize: isTablet ? 20 : 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Opening in external browser instead...',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: isDark
-                                ? const Color(0xFFB0B0B0)
-                                : const Color(0xFF6B6B6B),
-                            fontSize: isTablet ? 16 : 14,
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-                        ElevatedButton.icon(
-                          onPressed: _openInBrowser,
-                          icon: const FaIcon(
-                            FontAwesomeIcons.globe,
-                            size: 18,
-                          ),
-                          label: const Text('Open in Browser'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF009688),
-                            foregroundColor: Colors.white,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: isTablet ? 32 : 24,
-                              vertical: isTablet ? 16 : 14,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ],
+                        fontSize: isTablet ? 18 : 16,
+                      ),
                     ),
+                  ],
+                ),
+              )
+              : _webViewFailed
+              ? Center(
+                child: Padding(
+                  padding: EdgeInsets.all(isTablet ? 32 : 24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const FaIcon(
+                        FontAwesomeIcons.triangleExclamation,
+                        size: 64,
+                        color: Color(0xFFE53935),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Unable to load webview',
+                        style: TextStyle(
+                          color:
+                              isDark
+                                  ? const Color(0xFFE0E0E0)
+                                  : const Color(0xFF1A1A1A),
+                          fontSize: isTablet ? 20 : 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Opening in external browser instead...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color:
+                              isDark
+                                  ? const Color(0xFFB0B0B0)
+                                  : const Color(0xFF6B6B6B),
+                          fontSize: isTablet ? 16 : 14,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      ElevatedButton.icon(
+                        onPressed: _openInBrowser,
+                        icon: const FaIcon(FontAwesomeIcons.globe, size: 18),
+                        label: const Text('Open in Browser'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF009688),
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isTablet ? 32 : 24,
+                            vertical: isTablet ? 16 : 14,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                )
+                ),
+              )
               : _controller != null
-                  ? Stack(
-                      children: [
-                        WebViewWidget(controller: _controller!),
-                        if (_isLoading)
-                          Container(
-                            color: isDark
-                                ? const Color(0xFF121212)
-                                : const Color(0xFFF7F8FA),
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const CircularProgressIndicator(
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Color(0xFF009688),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'Loading...',
-                                    style: TextStyle(
-                                      color: isDark
-                                          ? const Color(0xFFE0E0E0)
-                                          : const Color(0xFF1A1A1A),
-                                      fontSize: isTablet ? 16 : 14,
-                                    ),
-                                  ),
-                                ],
+              ? Stack(
+                children: [
+                  WebViewWidget(controller: _controller!),
+                  if (_isLoading)
+                    Container(
+                      color:
+                          isDark
+                              ? const Color(0xFF121212)
+                              : const Color(0xFFF7F8FA),
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Color(0xFF009688),
                               ),
                             ),
-                          ),
-                      ],
-                    )
-                  : const Center(
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Color(0xFF009688),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Loading...',
+                              style: TextStyle(
+                                color:
+                                    isDark
+                                        ? const Color(0xFFE0E0E0)
+                                        : const Color(0xFF1A1A1A),
+                                fontSize: isTablet ? 16 : 14,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
+                ],
+              )
+              : const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF009688)),
+                ),
+              ),
     );
   }
 }
-

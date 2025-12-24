@@ -7,6 +7,7 @@ import '../models/recap_template.dart';
 import 'local_video_storage_service.dart';
 import 'video_analysis_service.dart';
 import 'recap_template_service.dart';
+import 'firestore_service.dart';
 
 /// Service for manually generating recaps with custom templates
 class ManualRecapService {
@@ -14,6 +15,7 @@ class ManualRecapService {
   final LocalVideoStorageService _localStorage = LocalVideoStorageService();
   final VideoAnalysisService _analysisService = VideoAnalysisService();
   final RecapTemplateService _templateService = RecapTemplateService();
+  final FirestoreService _firestoreService = FirestoreService();
 
   /// Manually generate a recap with specified template and settings
   Future<Map<String, dynamic>> generateRecap({
@@ -41,6 +43,12 @@ class ManualRecapService {
           'message': 'Need at least 3 videos to create recap',
         };
       }
+
+      // Ensure all pending videos for this week are uploaded before generating
+      // the recap so that the Cloud Function has access to the clips.
+      final uploadResult =
+          await _firestoreService.uploadPendingVideosForWeek(weekId);
+      print('[MANUAL_RECAP] Pending upload result: $uploadResult');
 
       // Analyze videos and create segments
       final segments = await _analyzeAndCreateSegments(

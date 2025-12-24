@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:thort_jivit/services/local_video_storage_service.dart';
 import 'package:thort_jivit/services/video_compression_service.dart';
 import 'package:thort_jivit/services/background_sync_service.dart';
+import 'package:thort_jivit/services/firestore_service.dart';
+import '../payment/aba_payment_screen.dart';
 
 class StorageSettingsScreen extends StatefulWidget {
   const StorageSettingsScreen({super.key});
@@ -14,6 +16,7 @@ class _StorageSettingsScreenState extends State<StorageSettingsScreen> {
   final LocalVideoStorageService _localStorage = LocalVideoStorageService();
   final VideoCompressionService _compressionService = VideoCompressionService();
   final BackgroundSyncService _syncService = BackgroundSyncService();
+  final FirestoreService _firestoreService = FirestoreService();
 
   Map<String, dynamic> _storageUsage = {};
   Map<String, dynamic> _compressionStats = {};
@@ -21,6 +24,7 @@ class _StorageSettingsScreenState extends State<StorageSettingsScreen> {
   Map<String, dynamic> _syncStats = {};
   bool _isLoading = true;
   bool _isProcessing = false;
+  bool _isPremium = false;
 
   @override
   void initState() {
@@ -38,12 +42,14 @@ class _StorageSettingsScreenState extends State<StorageSettingsScreen> {
       final stats = await _compressionService.getCompressionStats();
       final savings = await _compressionService.calculateCompressionSavings();
       final syncStats = await _syncService.getSyncStats();
+      final isPremium = await _firestoreService.isUserPremium();
 
       setState(() {
         _storageUsage = usage;
         _compressionStats = stats;
         _compressionSavings = savings;
         _syncStats = syncStats;
+        _isPremium = isPremium;
         _isLoading = false;
       });
     } catch (e) {
@@ -117,6 +123,22 @@ class _StorageSettingsScreenState extends State<StorageSettingsScreen> {
   }
 
   Future<void> _syncNow() async {
+    // Free users cannot trigger cloud sync; show message instead of syncing.
+    final isPremium = await _firestoreService.isUserPremium();
+    if (!isPremium) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cloud sync is a premium feature. Your videos are stored safely on this device.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() {
       _isProcessing = true;
     });
@@ -278,57 +300,131 @@ class _StorageSettingsScreenState extends State<StorageSettingsScreen> {
                     title: 'Cloud Sync',
                     icon: Icons.cloud_sync,
                     children: [
-                      _buildStatRow(
-                        'Synced to Cloud',
-                        '${_syncStats['uploaded'] ?? 0}',
-                        isDark,
-                        color: Colors.green,
-                      ),
-                      _buildStatRow(
-                        'Pending Upload',
-                        '${_syncStats['pending'] ?? 0}',
-                        isDark,
-                        color: _syncStats['pending'] != null &&
-                                _syncStats['pending'] > 0
-                            ? Colors.orange
-                            : null,
-                      ),
-                      if (_syncStats['failed'] != null &&
-                          _syncStats['failed'] > 0)
+                      if (_isPremium) ...[
                         _buildStatRow(
-                          'Failed Uploads',
-                          '${_syncStats['failed']}',
+                          'Synced to Cloud',
+                          '${_syncStats['uploaded'] ?? 0}',
                           isDark,
-                          color: Colors.red,
+                          color: Colors.green,
                         ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: _isProcessing ? null : _syncNow,
-                          icon: _isProcessing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.sync, size: 20),
-                          label: Text(
-                            _isProcessing ? 'Syncing...' : 'Force Sync Now',
+                        _buildStatRow(
+                          'Pending Upload',
+                          '${_syncStats['pending'] ?? 0}',
+                          isDark,
+                          color: _syncStats['pending'] != null &&
+                                  _syncStats['pending'] > 0
+                              ? Colors.orange
+                              : null,
+                        ),
+                        if (_syncStats['failed'] != null &&
+                            _syncStats['failed'] > 0)
+                          _buildStatRow(
+                            'Failed Uploads',
+                            '${_syncStats['failed']}',
+                            isDark,
+                            color: Colors.red,
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF009688),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _isProcessing ? null : _syncNow,
+                            icon: _isProcessing
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.sync, size: 20),
+                            label: Text(
+                              _isProcessing ? 'Syncing...' : 'Force Sync Now',
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF009688),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF009688).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFF009688).withOpacity(0.3),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              const Icon(
+                                Icons.cloud_off,
+                                size: 48,
+                                color: Color(0xFF009688),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Cloud Sync is Premium',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark
+                                      ? Colors.white
+                                      : const Color(0xFF1A1A1A),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Upgrade to premium to automatically back up your videos to the cloud.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: isDark
+                                      ? const Color(0xFFB0B0B0)
+                                      : const Color(0xFF666666),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const ABAPaymentScreen(),
+                                      ),
+                                    ).then((_) {
+                                      // Reload data after returning from payment
+                                      _loadData();
+                                    });
+                                  },
+                                  icon: const Icon(Icons.star, size: 20),
+                                  label: const Text('Go Premium'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF009688),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
 
@@ -341,10 +437,14 @@ class _StorageSettingsScreenState extends State<StorageSettingsScreen> {
                     icon: Icons.info_outline,
                     children: [
                       Text(
-                        '• Videos are saved locally first for fast access\n'
-                        '• Automatic sync to cloud happens nightly (WiFi + charging)\n'
-                        '• Old videos (4+ weeks) can be compressed to save space\n'
-                        '• Weekly recaps are kept in both local and cloud storage',
+                        _isPremium
+                            ? '• Videos are saved locally first for fast access\n'
+                                '• Automatic sync to cloud happens nightly (WiFi + charging)\n'
+                                '• Old videos (4+ weeks) can be compressed to save space\n'
+                                '• Weekly recaps are kept in both local and cloud storage'
+                            : '• Videos are saved locally on your device\n'
+                                '• Old videos (4+ weeks) can be compressed to save space\n'
+                                '• Upgrade to premium for cloud backup and automatic sync',
                         style: TextStyle(
                           fontSize: 13,
                           color: isDark

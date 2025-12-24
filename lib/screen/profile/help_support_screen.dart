@@ -71,7 +71,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
             },
           ),
         )
-        ..loadRequest(Uri.parse('https://www.google.com'));
+        ..loadRequest(Uri.parse('https://thort-jivit.vercel.app/help-support'));
       
       // Wait a bit to see if initialization succeeds
       await Future.delayed(const Duration(milliseconds: 500));
