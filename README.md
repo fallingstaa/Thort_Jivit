@@ -1,20 +1,26 @@
-<<<<<<< HEAD
-# thort_jivit
-=======
-# life_record
->>>>>>> b29264d7940f696e3a6b020c08bc81a4f0aacb73
+Thort Chivit 🎥
 
-A new Flutter project.
+A Mobile Video Journaling App
 
-## Getting Started
+📱 Overview
 
-This project is a starting point for a Flutter application.
+Thort Chivit is a mobile application that allows users to record short daily video journals (up to 30 seconds). It helps users capture their thoughts, emotions, and daily moments in a fun and consistent way.
 
-A few resources to get you started if this is your first Flutter project:
+✨ Key Features
+🎥 Daily video journaling (max 30 seconds)
+😊 Mood tracking (Happy, Sad, Bored, Depressed, Neutral)
+🎨 Add emojis and text overlays
+🎵 Background music support
+🔥 Streak tracking & reminders
+📅 Calendar history view
+🔗 Share to social media (Instagram, Facebook, WhatsApp, etc.)
+👤 User authentication & profile management
+🛠️ Tech Stack
+Frontend: Flutter (Android & iOS)
+Backend: Firebase (Auth, Database)
+Storage: Google Drive (video files)
+Notifications: Firebase Cloud Messaging (FCM)
+Design: Figma
+🎯 Purpose
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+The app encourages users to build a daily journaling habit through short, expressive videos, making reflection simple, creative, and engaging.
