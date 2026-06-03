@@ -27,7 +27,7 @@ It helps users capture their thoughts, emotions, and daily moments in a fun and 
 ## 🛠️ Tech Stack
 
 - **Frontend:** Flutter (Android & iOS)
-- **Backend:** Firebase (Auth, Database)
+- **Backend:** Firebase (Auth, Database, FFmpeg)
 - **Storage:** Google Drive (video files)
 - **Notifications:** Firebase Cloud Messaging (FCM)
 - **Design:** Figma
@@ -36,6 +36,4 @@ It helps users capture their thoughts, emotions, and daily moments in a fun and 
 
 
 
-## 👨‍💻 Author
 
-Developed as part of an internship project.
